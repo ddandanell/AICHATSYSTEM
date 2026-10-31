@@ -1,5 +1,5 @@
 import { desc } from "drizzle-orm";
-import { knowledgeStatusAction, learnAction, ruleStatusAction } from "@/app/[workspace]/ledger-actions";
+import { knowledgeStatusAction, learnAction, learnPassAction, ruleStatusAction } from "@/app/[workspace]/ledger-actions";
 import { listKnowledgeDrafts, listRuleCandidates } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";
 import { rules } from "@/db/schema";
@@ -19,8 +19,10 @@ export const metadata = { title: "Candidates" };
 
 export default async function CandidatesPage({
   params,
+  searchParams,
 }: PageProps<"/[workspace]/candidates">) {
   const { workspace } = await params;
+  const query = await searchParams;
   const access = await getWorkspaceAccess(workspace);
   if (access.status !== "ok") return null;
   const neon = usesMychefInbox();
@@ -30,6 +32,8 @@ export default async function CandidatesPage({
         return tx.select().from(rules).orderBy(desc(rules.createdAt));
       });
   const learn = learnAction.bind(null, access.ctx.orgSlug);
+  const pass = learnPassAction.bind(null, access.ctx.orgSlug);
+  const clustered = typeof query.clustered === "string" ? query.clustered : "";
   const update = ruleStatusAction.bind(null, access.ctx.orgSlug);
   const knowledge = neon ? await listKnowledgeDrafts() : [];
   const mark = knowledgeStatusAction.bind(null, access.ctx.orgSlug);
@@ -44,11 +48,21 @@ export default async function CandidatesPage({
           </p>
         </div>
         {canReview(access.ctx.role) ? (
-          <form action={learn}>
-            <Button type="submit">Run learning loop</Button>
-          </form>
+          <div className="flex flex-wrap gap-2">
+            <form action={pass}>
+              <Button type="submit">Run learning pass</Button>
+            </form>
+            <form action={learn}>
+              <Button type="submit" variant="outline">Run learning loop</Button>
+            </form>
+          </div>
         ) : null}
       </div>
+      {clustered ? (
+        <p className="max-w-2xl text-sm text-muted-foreground">
+          Clustered {clustered} recent reasons and proposed {typeof query.proposed === "string" ? query.proposed : "0"} pending rows. Nothing was activated and nothing was sent.
+        </p>
+      ) : null}
       {rows.length === 0 ? (
         <Empty className="border">
           <EmptyHeader>
@@ -72,24 +86,25 @@ export default async function CandidatesPage({
               <li key={rule.id} className="flex flex-col gap-3 rounded-xl border px-4 py-3">
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="secondary">{status}</Badge>
-                  <Badge variant="outline">{group}</Badge>
+                  <Badge variant="outline">{queueGroup(String(group))}</Badge>
                   <span className="text-sm text-muted-foreground">evidence {evidence}</span>
                 </div>
                 <p className="text-sm">{statement}</p>
-                {canReview(access.ctx.role) ? (
+                {"content" in rule ? caseDiff(rule.content) : null}
+                {canReview(access.ctx.role) && status === "candidate" ? (
                   <div className="flex flex-wrap gap-2">
                     <form action={update}>
                       <input type="hidden" name="id" value={rule.id} />
                       <input type="hidden" name="status" value={neon ? "approved" : "active"} />
                       <Button type="submit" size="sm" variant="outline">
-                        Activate
+                        Approve snippet
                       </Button>
                     </form>
                     <form action={update}>
                       <input type="hidden" name="id" value={rule.id} />
                       <input type="hidden" name="status" value={neon ? "retired" : "deprecated"} />
                       <Button type="submit" size="sm" variant="ghost">
-                        Deprecate
+                        Dismiss
                       </Button>
                     </form>
                   </div>
@@ -145,6 +160,29 @@ export default async function CandidatesPage({
           </ul>
         </section>
       ) : null}
+    </div>
+  );
+}
+
+function queueGroup(category: string) {
+  if (["missing_knowledge", "wrong_fact", "wrong_policy", "knowledge_gap"].includes(category)) {
+    return "Missing knowledge";
+  }
+  if (["too_formal", "too_casual", "should_have_asked", "customer_angry", "procedure_gap"].includes(category)) {
+    return "Tone";
+  }
+  if (["irrelevant_source", "retrieval"].includes(category)) return "Outdated";
+  return "Suggested";
+}
+
+function caseDiff(content: string) {
+  const ai = content.split("AI draft:")[1]?.split("Human reply:")[0]?.trim();
+  const human = content.split("Human reply:")[1]?.trim();
+  if (!ai && !human) return null;
+  return (
+    <div className="flex flex-col gap-2 text-sm">
+      {ai ? <p className="text-muted-foreground line-through whitespace-pre-wrap">{ai}</p> : null}
+      {human ? <p className="whitespace-pre-wrap">{human}</p> : null}
     </div>
   );
 }

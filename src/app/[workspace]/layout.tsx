@@ -53,7 +53,7 @@ export default async function WorkspaceLayout({
   return (
     <div className="flex min-h-full flex-col">
       <header className="border-b">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 md:px-6">
+        <div className="mx-auto flex w-full max-w-[90rem] flex-col gap-4 px-4 py-4 md:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1">
               <Link href={`/${ctx.orgSlug}/inbox`} className="text-sm text-muted-foreground">
@@ -97,7 +97,7 @@ export default async function WorkspaceLayout({
           </p>
         </div>
       </header>
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-6 md:px-6">
+      <div className="mx-auto flex w-full max-w-[90rem] flex-1 flex-col px-4 py-6 md:px-6">
         {children}
       </div>
     </div>

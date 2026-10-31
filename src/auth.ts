@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { userIdFromEmail, usesMychefInbox } from "@/db/mode";
+import { verifyOperator } from "@/lib/operators";
 import { findOrCreateUser } from "@/lib/workspace-access";
 
 const googleEnabled = Boolean(
@@ -23,18 +24,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         name: { label: "Name", type: "text" },
+        password: { label: "Password", type: "password" },
       },
       authorize: async (credentials) => {
         const email = String(credentials?.email ?? "")
           .trim()
           .toLowerCase();
         const name = String(credentials?.name ?? "").trim();
+        const password = String(credentials?.password ?? "");
         if (!emailPattern.test(email)) return null;
         if (usesMychefInbox()) {
+          const operator = await verifyOperator(email, password);
+          if (!operator) return null;
           return {
             id: userIdFromEmail(email),
-            email,
-            name: name || undefined,
+            email: operator.email,
+            name: operator.name,
           };
         }
         const user = await findOrCreateUser(email, name || null);

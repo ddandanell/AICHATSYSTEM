@@ -48,7 +48,7 @@ export default async function WebhooksPage({
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-medium tracking-tight">Webhook receipts</h2>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-          GoHighLevel events that this console received. A matching message becomes a conversation and a pending draft. Events that do not fit are listed here. Nothing on this page sends a reply. Automatic sending is not on.
+          GoHighLevel is the channel adapter in use. A matching message becomes a conversation and a pending draft. WhatsApp Business can use the same inbound shape later. It is not connected. Nothing on this page sends a reply.
         </p>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           {process.env.GHL_WEBHOOK_SECRET?.trim()

@@ -43,6 +43,10 @@ Optional Google sign-in uses `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
 
 The session resolves the workspace from the URL (`/[workspace]/...`). Client `x-tenant-*` headers are stripped and never trusted.
 
+## Sign in
+
+On the Neon inbox, sign-in is an approved operator email and password. The first owner is `bali@mychef.id`. Set `OPERATOR_BOOTSTRAP_PASSWORD` in `.env.local`. The server stores a scrypt hash on `integration_connections` and does not log the password. Other people are approved at `/mychef/settings/access`.
+
 ## Keys
 
 `BYOK_ENCRYPTION_KEY` is a 32-byte key, base64-encoded. The values in `.env.example` are for local development. Replace them before storing a real provider key.

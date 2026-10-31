@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type pg from "pg";
+import { inboundFromGhl } from "@/channels/inbound";
 import { recordAutoSendCandidateIfEnabled } from "@/lib/autopilot";
 import { localStructuredDraft } from "@/lib/draft";
 
@@ -97,6 +98,7 @@ export async function applyGhlPayload(
   verified: boolean,
 ): Promise<GhlResult> {
   const parsed = parseGhlMessage(payload);
+  const inbound = inboundFromGhl(parsed);
   const eventKey = `ghl:${safeId(parsed.messageId || parsed.body.slice(0, 80) || "empty", "evt-")}`.slice(0, 180);
   if (!parsed.body) {
     await writeReceipt(client, eventKey, {
@@ -129,13 +131,13 @@ export async function applyGhlPayload(
   await client.query(
     `insert into mychef_inbox.conversations
        (workspace_id, id, contact_id, channel, status, last_message_at, project_id, location_id)
-     values ($1, $2, $3, 'ghl', 'needs_reply', now(), 'mychef', $4)
+     values ($1, $2, $3, $5, 'needs_reply', now(), 'mychef', $4)
      on conflict (workspace_id, id) do update
        set status = 'needs_reply',
            last_message_at = now(),
            contact_id = excluded.contact_id,
            location_id = coalesce(excluded.location_id, mychef_inbox.conversations.location_id)`,
-    [WORKSPACE, conversationId, contactId, parsed.locationId || null],
+    [WORKSPACE, conversationId, contactId, inbound.locationId || null, inbound.channel],
   );
   const inserted = await client.query(
     `insert into mychef_inbox.messages
@@ -165,9 +167,16 @@ export async function applyGhlPayload(
     const draft = localStructuredDraft(parsed.body, knowledge, []);
     await client.query(
       `insert into mychef_inbox.drafts
-         (workspace_id, conversation_id, body, author_id, kind, based_on_message_id, model, source_ids)
-       values ($1, $2, $3, 'ghl-webhook', 'ai', $4, 'local', $5::jsonb)`,
-      [WORKSPACE, conversationId, draft.draftText, messageId, JSON.stringify(draft.sourceRefs)],
+         (workspace_id, conversation_id, body, author_id, kind, based_on_message_id, model, source_ids, prompt_version)
+       values ($1, $2, $3, 'ghl-webhook', 'ai', $4, 'local', $5::jsonb, $6)`,
+      [
+        WORKSPACE,
+        conversationId,
+        draft.draftText,
+        messageId,
+        JSON.stringify(draft.sourceRefs),
+        JSON.stringify({ confidence: draft.confidence, why: draft.why, escalate: draft.escalate, channel: inbound.channel }),
+      ],
     );
     await client.query("savepoint autopilot");
     try {

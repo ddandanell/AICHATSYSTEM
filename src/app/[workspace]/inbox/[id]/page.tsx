@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { reviewAction } from "@/app/[workspace]/inbox/[id]/actions";
 import { FeedbackForm } from "@/components/feedback-form";
 import { RetrievalPanel } from "@/components/retrieval-panel";
@@ -26,6 +26,9 @@ export default async function DecisionPage({
   const access = await getWorkspaceAccess(workspace);
   if (access.status !== "ok") return null;
   if (usesMychefInbox()) {
+    const { getConversation } = await import("@/data/mychef-store");
+    const conversation = await getConversation(id);
+    if (conversation) redirect(`/${workspace}/inbox?id=${encodeURIComponent(id)}`);
     const thread = await MychefThread({ id });
     if (!thread) notFound();
     return thread;

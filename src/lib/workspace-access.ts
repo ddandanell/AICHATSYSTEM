@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { appDb } from "@/db/client";
 import { usesMychefInbox } from "@/db/mode";
+import { findOperator } from "@/lib/operators";
 import { memberships, organizations, users } from "@/db/schema";
 
 export type Role = "owner" | "admin" | "reviewer" | "viewer";
@@ -49,16 +50,20 @@ export async function authorizeWorkspace(
 ): Promise<WorkspaceAccess> {
   if (usesMychefInbox()) {
     if (slug !== "mychef") return { status: "unknown" };
+    const operator = await findOperator(profile?.email ?? "");
+    if (!operator?.approved) {
+      return { status: "forbidden", orgName: "myCHEF", orgSlug: "mychef" };
+    }
     return {
       status: "ok",
       ctx: {
         userId,
         orgId: "mychef",
-        role: "owner",
+        role: operator.role,
         orgSlug: "mychef",
         orgName: "myCHEF",
-        email: profile?.email ?? "",
-        name: profile?.name ?? null,
+        email: operator.email,
+        name: operator.name,
       },
     };
   }

@@ -13,6 +13,7 @@ const LINKS = [
   { label: "Keys", href: (slug: string) => `/${slug}/settings/keys` },
   { label: "Webhooks", href: (slug: string) => `/${slug}/settings/webhooks` },
   { label: "Auto-pilot", href: (slug: string) => `/${slug}/settings/autopilot` },
+  { label: "Access", href: (slug: string) => `/${slug}/settings/access` },
   { label: "Candidates", href: (slug: string) => `/${slug}/candidates` },
   { label: "Evals", href: (slug: string) => `/${slug}/evals` },
   { label: "Team", href: (slug: string) => `/${slug}/team` },

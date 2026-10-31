@@ -247,11 +247,14 @@ export async function listInbox(
 export async function getConversation(id: string) {
   const conversations = await query<{
     id: string;
+    contact_id: string | null;
     contact_name: string | null;
+    facts: { tags?: string[]; phone?: string; email?: string; address?: string } | null;
     project_id: string | null;
     status: string;
+    channel: string | null;
   }>(
-    `select c.id, ct.name as contact_name, c.project_id, c.status
+    `select c.id, c.contact_id, ct.name as contact_name, ct.facts, c.project_id, c.status, c.channel
      from mychef_inbox.conversations c
      left join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
@@ -279,8 +282,9 @@ export async function getConversation(id: string) {
     model: string | null;
     created_at: Date;
     source_ids: unknown;
+    prompt_version: string | null;
   }>(
-    `select id::text as id, body, model, created_at, source_ids
+    `select id::text as id, body, model, created_at, source_ids, prompt_version
      from mychef_inbox.drafts
      where workspace_id = $1 and conversation_id = $2
      order by created_at desc
@@ -350,23 +354,34 @@ export async function getRecordedDecision(id: string) {
   };
 }
 
-async function rankKnowledge(inbound: string) {
-  const docs = await query<{ id: string; title: string; content: string }>(
-    `select id, title, content
+async function rankKnowledge(inbound: string, tag?: string | null) {
+  const docs = await query<{ id: string; title: string; content: string; category: string | null }>(
+    `select id, title, content, category
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')`,
+     where workspace_id = $1
+       and source not in ('ledger-rule', 'learning-pass')
+       and (source is distinct from 'situational' or status = 'approved')`,
     [MYCHEF_WORKSPACE],
   );
+  const needle = (tag ?? "").replaceAll("_", " ").toLowerCase();
   return docs
-    .map((doc) => ({
-      doc,
-      score: lexical(inbound, doc.title, doc.content),
-      kind: kindForTitle(doc.title),
-    }))
+    .map((doc) => {
+      const blob = `${doc.title}\n${doc.category ?? ""}\n${doc.content}`.toLowerCase();
+      const boost = needle && blob.includes(needle) ? 0.35 : 0;
+      return {
+        doc,
+        score: lexical(inbound, doc.title, doc.content) + boost,
+        kind: kindForTitle(doc.title),
+      };
+    })
     .sort((left, right) => right.score - left.score);
 }
 
-export async function draftForConversation(conversationId: string, authorId: string) {
+export async function draftForConversation(
+  conversationId: string,
+  authorId: string,
+  tag?: string | null,
+) {
   const conversation = await getConversation(conversationId);
   if (!conversation) return { ok: false as const, error: "That conversation is not in this workspace." };
   if (conversation.decided) {
@@ -376,7 +391,7 @@ export async function draftForConversation(conversationId: string, authorId: str
     [...conversation.messages].reverse().find((message) => message.direction === "inbound")
       ?.body ?? "";
   if (!inbound.trim()) return { ok: false as const, error: "This conversation has no inbound message." };
-  const ranked = await rankKnowledge(inbound);
+  const ranked = await rankKnowledge(inbound, tag);
   const knowledge = ranked.slice(0, 4).map((item) => ({
       chunkId: item.doc.id,
       orgId: MYCHEF_WORKSPACE,
@@ -392,8 +407,8 @@ export async function draftForConversation(conversationId: string, authorId: str
     .find((message) => message.direction === "inbound")?.id;
   await query(
     `insert into mychef_inbox.drafts
-       (workspace_id, conversation_id, body, author_id, kind, based_on_message_id, model, source_ids)
-     values ($1, $2, $3, $4, 'ai', $5, 'local', $6::jsonb)`,
+       (workspace_id, conversation_id, body, author_id, kind, based_on_message_id, model, source_ids, prompt_version)
+     values ($1, $2, $3, $4, 'ai', $5, 'local', $6::jsonb, $7)`,
     [
       MYCHEF_WORKSPACE,
       conversationId,
@@ -401,6 +416,7 @@ export async function draftForConversation(conversationId: string, authorId: str
       authorId,
       messageId ?? null,
       JSON.stringify(draft.sourceRefs),
+      JSON.stringify({ confidence: draft.confidence, why: draft.why, escalate: draft.escalate, tag: tag ?? null }),
     ],
   );
   const auto = await recordAutoSendCandidateIfEnabled(appPool, {
@@ -430,6 +446,8 @@ export async function reviewConversation(
     rationale: string;
     whyNot: string;
     finalText: string;
+    remember?: boolean;
+    tags?: string[];
   },
 ) {
   const conversation = await getConversation(conversationId);
@@ -483,6 +501,36 @@ export async function reviewConversation(
        values ($1, $2, 'feedback', $3)`,
       [MYCHEF_WORKSPACE, authorId, decisionId],
     );
+    if (input.remember && input.humanDecision === "edited" && decisionId) {
+      const tag = input.tags?.[0] ?? "private_chef";
+      const content = [
+        `evidence: 1`,
+        `group: ${input.reasonCode}`,
+        `reason: ${input.reasonCode}`,
+        `context_tag: ${tag}`,
+        ``,
+        `AI draft:`,
+        conversation.draft.body,
+        ``,
+        `Human reply:`,
+        input.finalText.trim() || conversation.draft.body,
+        ``,
+        input.rationale,
+      ].join("\n");
+      await client.query(
+        `insert into mychef_inbox.knowledge
+           (workspace_id, id, title, content, category, status, scope, source, version, project_id, area_id, created_at, updated_at)
+         values ($1, $2, $3, $4, $5, 'pending', 'business', 'situational', 1, 'mychef', 'general', now(), now())
+         on conflict (workspace_id, id) do nothing`,
+        [
+          MYCHEF_WORKSPACE,
+          `situational:${decisionId}`,
+          `Situational case for ${tag.replaceAll("_", " ")}`,
+          content,
+          input.reasonCode,
+        ],
+      );
+    }
     await client.query("commit");
     return { ok: true as const, id: decisionId };
   } catch (error) {
@@ -564,7 +612,7 @@ export async function setKnowledgeStatus(
   const updated = await query<{ id: string }>(
     `update mychef_inbox.knowledge
      set status = $3, updated_at = now(), version = version + 1
-     where workspace_id = $1 and id = $2 and source not in ('ledger-rule', 'learning-pass')
+     where workspace_id = $1 and id = $2 and source not in ('ledger-rule', 'learning-pass', 'situational')
      returning id`,
     [MYCHEF_WORKSPACE, id, status],
   );
@@ -598,14 +646,15 @@ type RuleRow = {
   content: string;
   status: string;
   category: string;
+  source: string;
   updated_at: Date;
 };
 
 export async function listRuleCandidates(): Promise<RuleRow[]> {
   return query<RuleRow>(
-    `select id, title, content, status, category, updated_at
+    `select id, title, content, status, category, source, updated_at
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source in ('ledger-rule', 'learning-pass')
+     where workspace_id = $1 and source in ('ledger-rule', 'learning-pass', 'situational')
      order by updated_at desc`,
     [MYCHEF_WORKSPACE],
   );
@@ -705,6 +754,49 @@ export async function runLearningPass(actorId: string, db: Db = appPool) {
     if (outcome === "created") proposed += 1;
     if (outcome === "refreshed") refreshed += 1;
   }
+  const edits = await rows<{
+    id: string;
+    reason_code: string;
+    original_draft: string;
+    edited_draft: string;
+    rationale: string | null;
+  }>(
+    db,
+    `select d.id::text as id, d.reason_code, f.original_draft, f.edited_draft, d.rationale
+     from mychef_inbox.decision_records d
+     join mychef_inbox.feedback f on f.id = d.feedback_id
+     where d.workspace_id = $1
+       and d.human_decision = 'edited'
+       and d.created_at >= now() - interval '30 days'
+       and not exists (
+         select 1 from mychef_inbox.knowledge k
+         where k.workspace_id = d.workspace_id and k.id = 'situational:' || d.id::text
+       )`,
+    [MYCHEF_WORKSPACE],
+  );
+  for (const edit of edits) {
+    const outcome = await proposePendingRow(db, {
+      id: `situational:${edit.id}`,
+      source: "situational",
+      title: `Situational case · ${edit.reason_code}`,
+      category: edit.reason_code,
+      content: [
+        "evidence: 1",
+        `group: ${edit.reason_code}`,
+        `reason: ${edit.reason_code}`,
+        "context_tag: private_chef",
+        "",
+        "AI draft:",
+        edit.original_draft,
+        "",
+        "Human reply:",
+        edit.edited_draft,
+        "",
+        edit.rationale ?? "",
+      ].join("\n"),
+    });
+    if (outcome === "created") proposed += 1;
+  }
   await db.query(
     `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
      values ($1, $2, 'learn:pass', $3)`,
@@ -717,7 +809,7 @@ async function proposePendingRow(
   db: Db,
   input: {
     id: string;
-    source: "ledger-rule" | "learning-pass";
+    source: "ledger-rule" | "learning-pass" | "situational";
     title: string;
     content: string;
     category: string;
@@ -792,7 +884,7 @@ export async function setMychefRuleStatus(
 ) {
   const rows = await query<{ title: string; content: string; status: string }>(
     `select title, content, status from mychef_inbox.knowledge
-     where workspace_id = $1 and id = $2 and source in ('ledger-rule', 'learning-pass')`,
+     where workspace_id = $1 and id = $2 and source in ('ledger-rule', 'learning-pass', 'situational')`,
     [MYCHEF_WORKSPACE, id],
   );
   const rule = rows[0];
