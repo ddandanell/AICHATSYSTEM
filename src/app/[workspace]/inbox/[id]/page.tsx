@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { reviewAction } from "@/app/[workspace]/inbox/[id]/actions";
 import { FeedbackForm } from "@/components/feedback-form";
+import { RetrievalPanel } from "@/components/retrieval-panel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { getWorkspaceAccess } from "@/lib/context";
 import { getDecision } from "@/lib/decisions";
 import { formatConfidence, formatWhen } from "@/lib/format";
 import { listKnowledge } from "@/lib/knowledge";
+import { retrieveForDecision } from "@/lib/retrieval";
 import { decisionLabel, reasonLabel } from "@/lib/reason-codes";
 import { canReview } from "@/lib/workspace-access";
 
@@ -25,6 +27,11 @@ export default async function DecisionPage({
   if (!decision) notFound();
   const catalog = listKnowledge().map((doc) => ({ id: doc.id, title: doc.title }));
   const action = reviewAction.bind(null, access.ctx.orgSlug, decision.id);
+  const retrieval = await retrieveForDecision(
+    access.ctx.orgId,
+    decision.id,
+    `${decision.inboundBody}\n${decision.draftText}`,
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -134,6 +141,11 @@ export default async function DecisionPage({
           )}
         </section>
       </div>
+      <RetrievalPanel
+        workspace={access.ctx.orgSlug}
+        decisions={retrieval.decisions}
+        knowledge={retrieval.knowledge}
+      />
     </div>
   );
 }

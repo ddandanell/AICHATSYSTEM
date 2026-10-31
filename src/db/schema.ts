@@ -1,14 +1,30 @@
 import {
   boolean,
   customType,
+  foreignKey,
   integer,
   jsonb,
   numeric,
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
+
+const vector256 = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return "vector(256)";
+  },
+  toDriver(value) {
+    return `[${value.join(",")}]`;
+  },
+  fromDriver(value) {
+    const text = String(value).trim();
+    const body = text.startsWith("[") ? text.slice(1, -1) : text;
+    return body.length === 0 ? [] : body.split(",").map((part) => Number(part));
+  },
+});
 
 const bytea = customType<{ data: Buffer; driverData: Buffer }>({
   dataType() {
@@ -203,6 +219,52 @@ export const evalRuns = pgTable("eval_runs", {
     .notNull()
     .defaultNow(),
 });
+
+export const documents = pgTable(
+  "documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    kind: text("kind").notNull().$type<"position" | "playbook" | "decision">(),
+    sourceId: text("source_id").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("documents_org_id_id_key").on(table.orgId, table.id),
+    unique("documents_org_kind_source_key").on(table.orgId, table.kind, table.sourceId),
+  ],
+);
+
+export const chunks = pgTable(
+  "chunks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id),
+    documentId: uuid("document_id").notNull(),
+    ordinal: integer("ordinal").notNull(),
+    body: text("body").notNull(),
+    embedding: vector256("embedding").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("chunks_org_document_ordinal_key").on(table.orgId, table.documentId, table.ordinal),
+    foreignKey({
+      columns: [table.orgId, table.documentId],
+      foreignColumns: [documents.orgId, documents.id],
+      name: "chunks_org_document_fkey",
+    }).onDelete("cascade"),
+  ],
+);
 
 export const aiUsageLog = pgTable("ai_usage_log", {
   id: uuid("id").primaryKey().defaultRandom(),

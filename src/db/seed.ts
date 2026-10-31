@@ -1,4 +1,5 @@
 import pg from "pg";
+import { ingestRetrieval } from "./ingest";
 import {
   HARBOR_CONVO_ALLERGY,
   HARBOR_CONVO_DEPOSIT,
@@ -33,8 +34,9 @@ const existing = await client.query(
 );
 if (existing.rowCount) {
   console.log("seed already applied");
+  await ingestRetrieval(client);
   await client.end();
-  process.exit(0);
+  return;
 }
 
 const depositDraft =
@@ -201,6 +203,7 @@ try {
   throw error;
 }
 
+await ingestRetrieval(client);
 await client.end();
 }
 

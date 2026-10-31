@@ -10,11 +10,13 @@ import {
   NORTHLINE_DECISION_LUNCH,
   NORTHLINE_ORG_ID,
 } from "../src/db/ids";
-import { decisionRecords } from "../src/db/schema";
+import { chunks, decisionRecords } from "../src/db/schema";
 import { withTenant } from "../src/db/tenant";
 import { encryptSecret, decryptSecret, keyHint } from "../src/lib/crypto";
 import { getDecision, saveReview } from "../src/lib/decisions";
+import { embedText, toVectorLiteral } from "../src/lib/embed";
 import { testProviderConnection } from "../src/lib/gateway";
+import { retrieveForDecision } from "../src/lib/retrieval";
 import { authorizeWorkspace } from "../src/lib/workspace-access";
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -101,6 +103,88 @@ const allergyLeak = await withTenant(NORTHLINE_ORG_ID, async (tx) => {
 });
 assert(allergyLeak.length === 0, "Northline session read Harbor's second decision");
 
+const harborChunks = await withTenant(HARBOR_ORG_ID, async (tx) => {
+  return tx.select({ id: chunks.id, orgId: chunks.orgId }).from(chunks);
+});
+const northlineChunks = await withTenant(NORTHLINE_ORG_ID, async (tx) => {
+  return tx.select({ id: chunks.id, orgId: chunks.orgId }).from(chunks);
+});
+assert(harborChunks.length > 0, "Harbor should have ingested chunks");
+assert(northlineChunks.length > 0, "Northline should have ingested chunks");
+assert(
+  harborChunks.every((row) => row.orgId === HARBOR_ORG_ID),
+  "Harbor session saw a chunk from another workspace",
+);
+assert(
+  northlineChunks.every((row) => row.orgId === NORTHLINE_ORG_ID),
+  "Northline session saw a chunk from another workspace",
+);
+const northlineChunkIds = new Set(northlineChunks.map((row) => row.id));
+const harborChunkIds = new Set(harborChunks.map((row) => row.id));
+assert(
+  harborChunks.every((row) => !northlineChunkIds.has(row.id)),
+  "Harbor and Northline chunk ids overlap",
+);
+const northlineSample = northlineChunks[0]?.id;
+const harborSample = harborChunks[0]?.id;
+assert(northlineSample && harborSample, "missing a sample chunk");
+const harborChunkLeak = await withTenant(HARBOR_ORG_ID, async (tx) => {
+  return tx.select({ id: chunks.id }).from(chunks).where(eq(chunks.id, northlineSample));
+});
+assert(harborChunkLeak.length === 0, "Harbor session read a Northline chunk by id");
+const northlineChunkLeak = await withTenant(NORTHLINE_ORG_ID, async (tx) => {
+  return tx.select({ id: chunks.id }).from(chunks).where(eq(chunks.id, harborSample));
+});
+assert(northlineChunkLeak.length === 0, "Northline session read a Harbor chunk by id");
+
+const harborRetrieval = await retrieveForDecision(
+  HARBOR_ORG_ID,
+  HARBOR_DECISION_DEPOSIT,
+  "Can I get the deposit back? It is non-refundable inside 14 days.",
+);
+assert(harborRetrieval.knowledge.length > 0, "Harbor retrieval returned no knowledge");
+assert(
+  harborRetrieval.knowledge.every(
+    (row) => row.orgId === HARBOR_ORG_ID && !northlineChunkIds.has(row.chunkId),
+  ),
+  "Harbor retrieval returned a Northline knowledge chunk",
+);
+assert(
+  harborRetrieval.knowledge.some((row) => row.sourceId === "deposit-cancellation"),
+  "Harbor deposit draft should match the deposit position",
+);
+assert(
+  harborRetrieval.decisions.every(
+    (row) => row.orgId === HARBOR_ORG_ID && row.sourceId !== NORTHLINE_DECISION_LUNCH,
+  ),
+  "Harbor retrieval returned a Northline decision",
+);
+
+const northlineRetrieval = await retrieveForDecision(
+  NORTHLINE_ORG_ID,
+  NORTHLINE_DECISION_LUNCH,
+  "40 guests seated lunch at $35 this Thursday.",
+);
+assert(northlineRetrieval.knowledge.length > 0, "Northline retrieval returned no knowledge");
+assert(
+  northlineRetrieval.knowledge.every(
+    (row) => row.orgId === NORTHLINE_ORG_ID && !harborChunkIds.has(row.chunkId),
+  ),
+  "Northline retrieval returned a Harbor knowledge chunk",
+);
+assert(
+  northlineRetrieval.decisions.every(
+    (row) =>
+      row.orgId === NORTHLINE_ORG_ID &&
+      row.sourceId !== HARBOR_DECISION_DEPOSIT &&
+      row.sourceId !== HARBOR_DECISION_ALLERGY,
+  ),
+  "Northline retrieval returned a Harbor decision",
+);
+
+const bareChunks = await appDb.select({ id: chunks.id }).from(chunks);
+assert(bareChunks.length === 0, `chunks were visible with no org context (${bareChunks.length})`);
+
 const bare = await appDb.select({ id: decisionRecords.id }).from(decisionRecords);
 assert(bare.length === 0, `decision rows were visible with no org context (${bare.length})`);
 
@@ -182,6 +266,45 @@ await admin.query(
    where id = $1`,
   [HARBOR_DECISION_DEPOSIT],
 );
+
+const northlineDoc = await admin.query<{ id: string }>(
+  "select id from documents where org_id = $1 limit 1",
+  [NORTHLINE_ORG_ID],
+);
+const harborDoc = await admin.query<{ id: string }>(
+  "select id from documents where org_id = $1 limit 1",
+  [HARBOR_ORG_ID],
+);
+assert(northlineDoc.rows[0] && harborDoc.rows[0], "seeded documents are missing");
+const probeVector = toVectorLiteral(embedText("cross workspace pointer"));
+let crossDocumentRejected = false;
+try {
+  await admin.query(
+    `insert into chunks (org_id, document_id, ordinal, body, embedding)
+     values ($1, $2, 9999, 'cross workspace pointer', $3::vector)`,
+    [HARBOR_ORG_ID, northlineDoc.rows[0].id, probeVector],
+  );
+} catch (error) {
+  crossDocumentRejected = /foreign key/i.test(errorText(error));
+}
+assert(
+  crossDocumentRejected,
+  "composite foreign key must reject a Harbor chunk pointing at a Northline document",
+);
+let reversePointerRejected = false;
+try {
+  await admin.query(
+    `insert into chunks (org_id, document_id, ordinal, body, embedding)
+     values ($1, $2, 9998, 'cross workspace pointer', $3::vector)`,
+    [NORTHLINE_ORG_ID, harborDoc.rows[0].id, probeVector],
+  );
+} catch (error) {
+  reversePointerRejected = /foreign key/i.test(errorText(error));
+}
+assert(
+  reversePointerRejected,
+  "composite foreign key must reject a Northline chunk pointing at a Harbor document",
+);
 await admin.end();
 
 console.log(
@@ -195,6 +318,12 @@ console.log(
       mayaNorthline: mayaNorthline.status,
       jonahHarbor: jonahHarbor.status,
       ciphertextSelectableByAppRole: false,
+      harborChunks: harborChunks.length,
+      northlineChunks: northlineChunks.length,
+      harborKnowledgeHits: harborRetrieval.knowledge.map((row) => row.sourceId),
+      northlineKnowledgeHits: northlineRetrieval.knowledge.map((row) => row.sourceId),
+      crossChunkReadById: 0,
+      crossDocumentForeignKey: "rejected",
     },
     null,
     2,

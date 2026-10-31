@@ -45,10 +45,12 @@ A connection test calls the provider from the server. If no active key is stored
 npm run verify:rls
 ```
 
-The check signs Maya and Jonah into their own workspaces, then reads `decision_records` with each org id set via `set_config('app.current_org_id', ..., true)`. A session scoped to one workspace cannot read the other's rows, including a lookup by the other workspace's decision id. With no org id set, the app role sees nothing. The migration superuser can see both, which is how you know the rows exist.
+The check signs Maya and Jonah into their own workspaces, then reads `decision_records` and `chunks` with each org id set via `set_config('app.current_org_id', ..., true)`. A session scoped to one workspace cannot read the other's decision rows or chunks, including a lookup by the other workspace's id. Retrieval for a Harbor draft does not return Northline chunk ids, and the reverse. With no org id set, the app role sees nothing. The migration superuser can see both, which is how you know the rows exist. The same check tries to insert a chunk whose `org_id` and `document_id` belong to different workspaces. The composite foreign key rejects it.
+
+## Retrieval
+
+Positions and playbooks under `knowledge/` are ingested into `documents` and `chunks` once per seeded workspace, along with each workspace's own decision text. Embeddings are a local 256-dimension hash. No provider is called. On a decision, the page shows similar past decisions and matching knowledge from that workspace only. `documents` and `chunks` use the same forced row-level security policy as the ledger. A chunk can reference a document only when both rows share `org_id`.
 
 ## What this slice does not do
 
-No GoHighLevel, no MCP, no vector ingestion, no automatic send, and no eval runner. The nightly learning loop is not implemented. The `rules` table is there so a later job can write `candidate` rows and leave them inactive. Reason codes and the diagnosis rules are fixed in `src/lib/reason-codes.ts` and `src/lib/learning-loop.ts`.
-
-Knowledge positions and playbooks are markdown under `knowledge/`.
+No GoHighLevel, no MCP, no nightly clustering job, no automatic send, and no eval runner. The nightly learning loop is not implemented. The `rules` table is there so a later job can write `candidate` rows and leave them inactive. Reason codes and the diagnosis rules are fixed in `src/lib/reason-codes.ts` and `src/lib/learning-loop.ts`.
