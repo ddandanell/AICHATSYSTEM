@@ -79,6 +79,8 @@ A signed-in reviewer uploads a ChatGPT project export (`.zip`, `.json`, or `.mar
 
 On `/mychef/candidates`, **Run learning pass** clusters decision records from the last 30 days by reason. Knowledge-gap reasons become pending `learning-pass` rows; other reasons become pending `ledger-rule` rows. Cards group by Missing Knowledge, Tone, Outdated, and Suggested, and show AI vs human evidence diffs. **Approve Snippet** stores the case as `situational` knowledge. **Dismiss** retires it. The curated library (12 rows) is never updated. Idempotency uses `audit_log` action `learn:processed` per decision (no DDL). `GET /api/cron/learn` runs the same pass when `Authorization: Bearer` matches `CRON_SECRET`. Vercel Cron calls that path daily at 02:00 Asia/Kuala_Lumpur (18:00 UTC). The pass does not activate snippets and does not send.
 
+Module headers on `src/lib/learning-queue.ts`, `src/lib/learning-loop.ts`, `src/app/api/cron/learn/route.ts`, and the Neon learning helpers in `src/data/mychef-store.ts` point at the CBLS architecture and agent handoff docs. This slice stops at the Learning Queue; inbox redesign, login polish, and send paths stay elsewhere.
+
 ## What this slice does not do
 
 No GoHighLevel send, no MCP, and no automatic send. The receive stub only stores an inbound message and a pending draft.
