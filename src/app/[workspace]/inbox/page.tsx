@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { draftAction } from "@/app/[workspace]/inbox/actions";
+import { DraftComposer } from "@/components/draft-composer";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -17,6 +20,7 @@ import { getWorkspaceAccess } from "@/lib/context";
 import { listDecisions } from "@/lib/decisions";
 import { excerpt, formatConfidence, formatWhen } from "@/lib/format";
 import { decisionLabel, reasonLabel } from "@/lib/reason-codes";
+import { canReview } from "@/lib/workspace-access";
 
 export const metadata = { title: "Inbox" };
 
@@ -30,6 +34,7 @@ export default async function InboxPage({
   if (access.status !== "ok") return null;
   const status = query.status === "reviewed" ? "reviewed" : "pending_review";
   const rows = await listDecisions(access.ctx.orgId, status);
+  const draft = draftAction.bind(null, access.ctx.orgSlug);
 
   return (
     <div className="flex flex-col gap-5">
@@ -42,6 +47,18 @@ export default async function InboxPage({
         </div>
         <QueueTabs slug={access.ctx.orgSlug} status={status} />
       </div>
+      {status === "pending_review" ? (
+        canReview(access.ctx.role) ? (
+          <DraftComposer action={draft} />
+        ) : (
+          <Alert>
+            <AlertTitle>View only</AlertTitle>
+            <AlertDescription>
+              Your role can read this queue. A reviewer, admin, or owner pastes a message to draft a reply.
+            </AlertDescription>
+          </Alert>
+        )
+      ) : null}
       {rows.length === 0 ? (
         <Empty className="border">
           <EmptyHeader>

@@ -60,6 +60,26 @@ export default async function DecisionPage({
           <div className="rounded-lg border px-4 py-3 text-sm leading-6 whitespace-pre-wrap">
             {decision.draftText}
           </div>
+          {decision.status === "pending_review" && decision.rationale ? (
+            <dl className="grid gap-3 rounded-lg border px-4 py-3 text-sm">
+              <div>
+                <dt className="text-muted-foreground">Why</dt>
+                <dd className="whitespace-pre-wrap">{decision.rationale}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Why not</dt>
+                <dd className="whitespace-pre-wrap">{decision.whyNot}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Escalate</dt>
+                <dd>
+                  {decision.actionTaken === "escalate"
+                    ? "Yes. A person should take this. Nothing is sent."
+                    : "No. A reviewer can accept, edit, or reject the draft. Nothing is sent."}
+                </dd>
+              </div>
+            </dl>
+          ) : null}
           <div className="flex flex-col gap-2">
             <h2 className="text-sm font-medium">Cited sources</h2>
             {(decision.sourceRefs ?? []).length === 0 ? (

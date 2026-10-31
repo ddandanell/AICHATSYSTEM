@@ -13,7 +13,8 @@ import {
 import { chunks, decisionRecords } from "../src/db/schema";
 import { withTenant } from "../src/db/tenant";
 import { encryptSecret, decryptSecret, keyHint } from "../src/lib/crypto";
-import { getDecision, saveReview } from "../src/lib/decisions";
+import { getDecision, listDecisions, saveReview } from "../src/lib/decisions";
+import { assertProviderCallAllowed, createDraft } from "../src/lib/draft";
 import { embedText, toVectorLiteral } from "../src/lib/embed";
 import { testProviderConnection } from "../src/lib/gateway";
 import { retrieveForDecision } from "../src/lib/retrieval";
@@ -39,7 +40,33 @@ function errorText(error: unknown): string {
   return parts.join("\n");
 }
 
+const draftMarker = "VERIFY-LEDGER-HARBOR";
+
+async function removeVerifyDrafts() {
+  const url = process.env.MIGRATION_DATABASE_URL;
+  if (!url) throw new Error("MIGRATION_DATABASE_URL is not set");
+  const admin = new pg.Client({ connectionString: url });
+  await admin.connect();
+  try {
+    const rows = await admin.query<{ id: string }>(
+      `select d.id
+       from decision_records d
+       join raw_messages m on m.id = d.inbound_message_id
+       where m.body like $1`,
+      ["%VERIFY-%HARBOR%"],
+    );
+    for (const row of rows.rows) {
+      await admin.query(`delete from documents where kind = 'decision' and source_id = $1`, [row.id]);
+      await admin.query(`delete from decision_records where id = $1`, [row.id]);
+    }
+    await admin.query(`delete from raw_messages where body like $1`, ["%VERIFY-%HARBOR%"]);
+  } finally {
+    await admin.end();
+  }
+}
+
 async function main() {
+await removeVerifyDrafts();
 const roundtrip = "sk-test-harbor-key-9f3a";
 const encrypted = encryptSecret(roundtrip);
 assert(decryptSecret(encrypted) === roundtrip, "AES-GCM roundtrip failed");
@@ -214,6 +241,68 @@ assert(
   `expected a no-key result, got ${JSON.stringify(noKey)}`,
 );
 
+let refusedWithoutKey = false;
+try {
+  assertProviderCallAllowed(false, true);
+} catch (error) {
+  refusedWithoutKey = /without a stored key/i.test(errorText(error));
+}
+assert(refusedWithoutKey, "a provider call without a stored key must be refused");
+assertProviderCallAllowed(false, false);
+assertProviderCallAllowed(true, true);
+
+const originalFetch = globalThis.fetch;
+let providerCalls = 0;
+globalThis.fetch = async (...args) => {
+  providerCalls += 1;
+  return originalFetch(...args);
+};
+let draftedId = "";
+try {
+  const created = await createDraft(
+    HARBOR_ORG_ID,
+    "Can I get the deposit back? The dinner is nine days away. VERIFY-LEDGER-HARBOR",
+  );
+  assert(created.ok, `Harbor draft was not created: ${JSON.stringify(created)}`);
+  draftedId = created.id;
+  assert(
+    created.draft.draftText.includes("This draft was not produced by a provider."),
+    "local drafter must say the draft was not produced by a provider",
+  );
+  assert(
+    /non-refundable/i.test(created.draft.draftText),
+    "local drafter must quote the deposit position",
+  );
+  assert(created.draft.why.length > 0 && created.draft.whyNot.length > 0, "draft is missing why or why not");
+  assert(
+    created.draft.sourceRefs.some((ref) => ref.id === "deposit-cancellation"),
+    "draft source refs must include the deposit position",
+  );
+  assert(typeof created.draft.escalate === "boolean", "draft must include escalate");
+  const harborDraft = await getDecision(HARBOR_ORG_ID, created.id);
+  assert(harborDraft?.status === "pending_review", "Harbor draft should be pending review");
+  assert(harborDraft?.orgId === HARBOR_ORG_ID, "Harbor draft stored the wrong org");
+  const harborInbox = await listDecisions(HARBOR_ORG_ID, "pending_review");
+  assert(
+    harborInbox.some((row) => row.id === created.id),
+    "Harbor inbox should list the new draft",
+  );
+  const northlineDraft = await getDecision(NORTHLINE_ORG_ID, created.id);
+  assert(northlineDraft === null, "Northline read a draft created in Harbor");
+  const northlineInbox = await listDecisions(NORTHLINE_ORG_ID, "pending_review");
+  assert(
+    northlineInbox.every((row) => row.id !== created.id && !row.inboundBody.includes(draftMarker)),
+    "Northline inbox showed Harbor's drafted message",
+  );
+} finally {
+  globalThis.fetch = originalFetch;
+  await removeVerifyDrafts();
+}
+assert(providerCalls === 0, `drafting called fetch ${providerCalls} times`);
+assert(draftedId.length > 0, "draft id was not recorded");
+const gone = await getDecision(HARBOR_ORG_ID, draftedId);
+assert(gone === null, "verify draft was not removed");
+
 const saved = await saveReview(
   HARBOR_ORG_ID,
   MAYA_USER_ID,
@@ -324,6 +413,8 @@ console.log(
       northlineKnowledgeHits: northlineRetrieval.knowledge.map((row) => row.sourceId),
       crossChunkReadById: 0,
       crossDocumentForeignKey: "rejected",
+      harborDraftHiddenFromNorthline: true,
+      providerCallsDuringDraft: providerCalls,
     },
     null,
     2,

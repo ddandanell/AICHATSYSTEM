@@ -51,6 +51,12 @@ The check signs Maya and Jonah into their own workspaces, then reads `decision_r
 
 Positions and playbooks under `knowledge/` are ingested into `documents` and `chunks` once per seeded workspace, along with each workspace's own decision text. Embeddings are a local 256-dimension hash. No provider is called. On a decision, the page shows similar past decisions and matching knowledge from that workspace only. `documents` and `chunks` use the same forced row-level security policy as the ledger. A chunk can reference a document only when both rows share `org_id`.
 
+## Draft copilot
+
+On the pending inbox, a reviewer pastes one client message. Inside that workspace’s row-level security scope, the server loads matching knowledge chunks and similar decisions, then writes a `decision_records` row with status `pending_review`. The row stores draft text, why, why not, confidence, source refs, and whether to escalate. Nothing is sent.
+
+If no provider key is stored, the draft is deterministic: it quotes the closest position and says it was not produced by a provider. The draft path does not call a provider.
+
 ## What this slice does not do
 
 No GoHighLevel, no MCP, no nightly clustering job, no automatic send, and no eval runner. The nightly learning loop is not implemented. The `rules` table is there so a later job can write `candidate` rows and leave them inactive. Reason codes and the diagnosis rules are fixed in `src/lib/reason-codes.ts` and `src/lib/learning-loop.ts`.
