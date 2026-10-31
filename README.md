@@ -61,11 +61,25 @@ The check signs Maya and Jonah into their own workspaces, then reads `decision_r
 
 Positions and playbooks under `knowledge/` are ingested into `documents` and `chunks` once per seeded workspace, along with each workspace's own decision text. Embeddings are a local 256-dimension hash. No provider is called. On a decision, the page shows similar past decisions and matching knowledge from that workspace only. `documents` and `chunks` use the same forced row-level security policy as the ledger. A chunk can reference a document only when both rows share `org_id`.
 
+## Inbox desk (myCHEF)
+
+On Neon (`mychef_runtime`), `/mychef/inbox` is a full-height **three-pane operations desk** (see agent-store `docs/inbox-ux.md` and `docs/handoff.md`):
+
+1. **Queue** — search; filters All / Needs Review / Auto-Sent / Escalated; cards with name, snippet, time, category badges (Private Chef / Catering / VIP), confidence dot.
+2. **Workspace** — chat history, editable AI draft (blue border while editing), Approve & Send / Regenerate / Escalate. Approve writes the ledger only; **sending is not connected** (no GHL or WhatsApp send).
+3. **Context** — Client Info (phone/email/address/tags; saving tags regenerates the draft) and AI Brain (sources, reasoning, edit feedback + “Remember this for next time” situational pending row).
+
+Shortcuts: `J`/`K` queue, `A` approve, `E` edit, `⌘`/`Ctrl`+Enter submit. Mobile stacks list → detail; not three columns.
+
+Channel kinds are reserved in `src/lib/channels.ts` (`ghl`, `whatsapp_business` planned, `manual`). WhatsApp Business is not built in this slice.
+
+Local Docker Harbor/Northline tenants still use the older card queue and paste-to-draft flow.
+
 ## Draft copilot
 
-On the pending inbox, a reviewer pastes one client message. Inside that workspace’s row-level security scope, the server loads matching knowledge chunks and similar decisions, then writes a `decision_records` row with status `pending_review`. The row stores draft text, why, why not, confidence, source refs, and whether to escalate. Nothing is sent.
+On the pending inbox (local Docker), a reviewer pastes one client message. Inside that workspace’s row-level security scope, the server loads matching knowledge chunks and similar decisions, then writes a `decision_records` row with status `pending_review`. The row stores draft text, why, why not, confidence, source refs, and whether to escalate. Nothing is sent.
 
-If no provider key is stored, the draft is deterministic: it quotes the closest position and says it was not produced by a provider. The draft path does not call a provider.
+On myCHEF, drafts are created from the desk or the GHL receive stub against `mychef_inbox` knowledge. If no provider key is stored, the draft is deterministic: it quotes the closest position and says it was not produced by a provider. The draft path does not call a provider.
 
 ## Import
 

@@ -1,6 +1,13 @@
+/**
+ * Workspace chrome for the decision console.
+ * Purpose: header + nav; inbox desk goes full-bleed via WorkspaceMain.
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
+ */
 import Link from "next/link";
 import { logoutAction } from "@/app/login/actions";
 import { ConsoleNav } from "@/components/console-nav";
+import { WorkspaceMain } from "@/components/workspace-main";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,9 +55,9 @@ export default async function WorkspaceLayout({
   const workspaces = await listMyWorkspaces(ctx.userId);
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 md:px-6">
+    <div className="flex min-h-dvh flex-col">
+      <header className="shrink-0 border-b">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-3 md:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1">
               <Link href={`/${ctx.orgSlug}/inbox`} className="text-sm text-muted-foreground">
@@ -87,14 +94,9 @@ export default async function WorkspaceLayout({
             </div>
           ) : null}
           <ConsoleNav slug={ctx.orgSlug} />
-          <p className="text-sm text-muted-foreground">
-            Automatic sending is not on. A review stays in the ledger and does not message the client.
-          </p>
         </div>
       </header>
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-6 md:px-6">
-        {children}
-      </div>
+      <WorkspaceMain>{children}</WorkspaceMain>
     </div>
   );
 }

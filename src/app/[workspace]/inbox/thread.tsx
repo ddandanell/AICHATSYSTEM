@@ -1,3 +1,8 @@
+/**
+ * Legacy single-thread review (superseded by desk-review for myCHEF).
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ */
 import Link from "next/link";
 import { draftConversationAction, outcomeAction, reviewConversationAction } from "@/app/[workspace]/inbox/mychef-actions";
 import { getConversation, getRecordedDecision } from "@/data/mychef-store";

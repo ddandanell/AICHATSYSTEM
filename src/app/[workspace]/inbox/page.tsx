@@ -1,5 +1,12 @@
+/**
+ * Inbox route — three-pane desk for myCHEF; legacy card queue for local Docker tenants.
+ * Panes: queue | workspace | context (see MychefDesk).
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ */
 import Link from "next/link";
 import { draftAction } from "@/app/[workspace]/inbox/actions";
+import { MychefDesk } from "@/app/[workspace]/inbox/desk";
 import { DraftComposer } from "@/components/draft-composer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +23,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { QueueTabs } from "@/components/queue-tabs";
-import { MychefQueue } from "@/app/[workspace]/inbox/queue";
 import { usesMychefInbox } from "@/db/mode";
 import { getWorkspaceAccess } from "@/lib/context";
 import { listDecisions } from "@/lib/decisions";
@@ -38,8 +44,14 @@ export default async function InboxPage({
   if (usesMychefInbox()) {
     const page = Number(query.page ?? "1");
     const search = typeof query.q === "string" ? query.q : "";
+    const filter = typeof query.filter === "string" ? query.filter : undefined;
     return (
-      <MychefQueue slug={access.ctx.orgSlug} status={status} page={page} search={search} />
+      <MychefDesk
+        slug={access.ctx.orgSlug}
+        filterRaw={filter}
+        page={page}
+        search={search}
+      />
     );
   }
   const rows = await listDecisions(access.ctx.orgId, status);
