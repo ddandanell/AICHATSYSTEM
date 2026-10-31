@@ -1,3 +1,7 @@
+/**
+ * Safe provider connection probes. Redacts secrets from errors. No completions invented.
+ * Docs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ */
 import { markMychefKeyChecked, resolveMychefSecret } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";
 import { withTenant } from "@/db/tenant";

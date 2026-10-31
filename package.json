@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 4317 -H 0.0.0.0",
+    "dev": "next dev -p 4327 -H 0.0.0.0",
     "build": "next build",
-    "start": "next start -p 4317 -H 0.0.0.0",
+    "start": "next start -p 4327 -H 0.0.0.0",
+    "seed:operator": "node --env-file=.env.local --import tsx scripts/seed-operator.ts",
     "lint": "eslint",
     "db:migrate": "node --env-file=.env.local --import tsx src/db/migrate.ts",
     "db:seed": "node --env-file=.env.local --import tsx src/db/seed.ts",

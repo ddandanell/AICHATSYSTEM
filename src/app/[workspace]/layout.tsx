@@ -10,9 +10,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { usesMychefInbox } from "@/db/mode";
+import { readAutopilot } from "@/lib/autopilot";
 import { getWorkspaceAccess } from "@/lib/context";
 import { roleLabel } from "@/lib/format";
 import { listMyWorkspaces } from "@/lib/workspace-access";
+
+export const instant = false;
 
 export default async function WorkspaceLayout({
   children,
@@ -25,14 +29,14 @@ export default async function WorkspaceLayout({
       <main className="mx-auto flex w-full max-w-lg flex-1 flex-col justify-center px-4 py-16">
         <Card>
           <CardHeader>
-            <CardTitle>Not a member</CardTitle>
+            <CardTitle>Not approved for this workspace</CardTitle>
             <CardDescription>
-              You are signed in, but this session is not a member of {access.orgName}.
-              Their decisions stay closed.
+              You are signed in, but this email is not an approved operator for {access.orgName}.
+              Ask an owner under Access, or sign out.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex gap-2">
-            <Button render={<Link href="/" />}>Your workspaces</Button>
+            <Button render={<Link href="/" />}>Home</Button>
             <form action={logoutAction}>
               <Button type="submit" variant="outline">
                 Sign out
@@ -46,6 +50,9 @@ export default async function WorkspaceLayout({
 
   const ctx = access.ctx;
   const workspaces = await listMyWorkspaces(ctx.userId);
+  const autopilot = usesMychefInbox()
+    ? await readAutopilot()
+    : { enabled: false, confidenceThreshold: 0.8 };
 
   return (
     <div className="flex min-h-full flex-col">
@@ -53,7 +60,7 @@ export default async function WorkspaceLayout({
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 md:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1">
-              <Link href={`/${ctx.orgSlug}/inbox`} className="text-sm text-muted-foreground">
+              <Link href={`/${ctx.orgSlug}/dashboard`} className="text-sm text-muted-foreground">
                 Inbox mychef
               </Link>
               <div className="flex flex-wrap items-center gap-2">
@@ -79,7 +86,7 @@ export default async function WorkspaceLayout({
                   key={item.slug}
                   size="sm"
                   variant={item.slug === ctx.orgSlug ? "secondary" : "ghost"}
-                  render={<Link href={`/${item.slug}/inbox`} />}
+                  render={<Link href={`/${item.slug}/dashboard`} />}
                 >
                   {item.name}
                 </Button>
@@ -88,7 +95,9 @@ export default async function WorkspaceLayout({
           ) : null}
           <ConsoleNav slug={ctx.orgSlug} />
           <p className="text-sm text-muted-foreground">
-            Automatic sending is not on. A review stays in the ledger and does not message the client.
+            {autopilot.enabled
+              ? "Sending is not connected."
+              : "Automatic sending is not on. A review stays in the ledger and does not message the client."}
           </p>
         </div>
       </header>

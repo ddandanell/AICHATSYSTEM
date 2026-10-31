@@ -24,30 +24,40 @@ npm run db:setup
 npm run dev
 ```
 
-Open [http://127.0.0.1:4317](http://127.0.0.1:4317).
+Open [http://127.0.0.1:4327](http://127.0.0.1:4327).
 
-Seeded sessions on local Docker:
+Agent handoff (architecture, Neon rules, channel adapters): `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md`.
+
+### Local Docker sessions
 
 - Maya Chen (`maya@harbor-kitchen.example`) — owner of Harbor Kitchen. Two drafts are waiting. The reviewed tab is empty.
 - Jonah Hale (`jonah@northline.example`) — owner of Northline Catering. The pending queue is empty. One edited reply is already reviewed.
 
-When the console points at Neon, the same Maya account is the owner of myCHEF. Jonah has no membership there. The myCHEF inbox starts empty; the knowledge page lists the copied documents.
+### Neon (mychef_runtime)
 
-A new email creates a user and lands on workspace setup. Create a workspace to see an empty queue, or join a slug as a viewer. This fallback stores no password.
+Only approved operators sign in. Seed the owner with `npm run seed:operator` after setting `OPERATOR_BOOTSTRAP_*` in gitignored `.env.local`. The approved owner email is `bali@mychef.id`. Passwords are stored as scrypt hashes on `integration_connections` (`id = operator:<email>`). Manage operators at `/mychef/settings/access`. After login you land on the dashboard with next steps for Inbox, Knowledge, and Keys.
 
 ## Auth
 
-Production auth is Clerk Organizations (`CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`) with roles owner, admin, reviewer, and viewer. When those keys are absent, Auth.js credentials sign-in is the local fallback and still writes real user and organization ids.
+On Neon, Auth.js credentials require an approved operator email and password. Hashed passwords only — never log or commit plaintext. Local Docker keeps the email-only fallback for Harbor Kitchen / Northline demos. Clerk Organizations remain optional (`CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`).
 
-Optional Google sign-in uses `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET`.
+Optional Google sign-in uses `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` (disabled for Neon operator mode).
 
 The session resolves the workspace from the URL (`/[workspace]/...`). Client `x-tenant-*` headers are stripped and never trusted.
 
 ## Keys
 
-`BYOK_ENCRYPTION_KEY` is a 32-byte key, base64-encoded. The values in `.env.example` are for local development. Replace them before storing a real provider key.
+`BYOK_ENCRYPTION_KEY` is a 32-byte key, base64-encoded. The values in `.env.example` are for local development. Replace them before storing a real provider key. Prefer **Vercel AI Gateway** and **DeepSeek** first, then OpenAI, Anthropic, Google, Azure, and Bedrock. Keys are AES-256-GCM encrypted; the UI shows a four-character hint only. Operator password hashes never appear on the Keys page.
 
 A connection test calls the provider from the server. If no active key is stored, the result is `No active key stored for this provider.` The test does not invent a completion. Azure OpenAI and Bedrock need an endpoint or signing setup this slice does not store, so those tests refuse to send the key.
+
+## Auto-pilot
+
+Off by default at `/mychef/settings/autopilot`. Turning it on can only record an `auto_sent_candidate` decision. Sending is not connected.
+
+## Channels
+
+Inbound adapters live under `src/channels/inbound.ts`. GoHighLevel is wired today. WhatsApp Business is reserved as a later channel (`whatsappInboundReady = false`) and must reuse the same conversation → draft → review loop. Do not build WhatsApp send yet.
 
 ## Isolation check
 

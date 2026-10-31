@@ -1,7 +1,16 @@
+/**
+ * Auth.js for Inbox mychef.
+ *
+ * Neon mode: only approved operators with a scrypt password hash may sign in.
+ * Hashed passwords only — never log plaintext. Local Docker keeps the email
+ * fallback for Harbor Kitchen / Northline demos.
+ * Docs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ */
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { userIdFromEmail, usesMychefInbox } from "@/db/mode";
+import { verifyOperator } from "@/lib/operators";
 import { findOrCreateUser } from "@/lib/workspace-access";
 
 const googleEnabled = Boolean(
@@ -22,19 +31,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Credentials({
       credentials: {
         email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
         name: { label: "Name", type: "text" },
       },
       authorize: async (credentials) => {
         const email = String(credentials?.email ?? "")
           .trim()
           .toLowerCase();
+        const password = String(credentials?.password ?? "");
         const name = String(credentials?.name ?? "").trim();
         if (!emailPattern.test(email)) return null;
         if (usesMychefInbox()) {
+          const operator = await verifyOperator(email, password);
+          if (!operator) return null;
           return {
-            id: userIdFromEmail(email),
-            email,
-            name: name || undefined,
+            id: operator.userId,
+            email: operator.email,
+            name: operator.name,
           };
         }
         const user = await findOrCreateUser(email, name || null);
@@ -50,6 +63,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async jwt({ token, user, account }) {
       if (account?.provider === "google" && user?.email) {
+        if (usesMychefInbox()) return token;
         const row = await findOrCreateUser(user.email, user.name ?? null);
         token.sub = row.id;
         return token;
