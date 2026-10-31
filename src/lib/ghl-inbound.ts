@@ -149,7 +149,11 @@ export async function applyGhlPayload(
   if ((inserted.rowCount ?? 0) > 0) {
     const docs = await client.query<{ id: string; title: string; content: string }>(
       `select id, title, content from mychef_inbox.knowledge
-       where workspace_id = $1 and source is distinct from 'ledger-rule'`,
+       where workspace_id = $1
+         and (
+           source not in ('ledger-rule', 'learning-pass', 'situational')
+           or (source = 'situational' and status = 'approved')
+         )`,
       [WORKSPACE],
     );
     const knowledge = docs.rows.slice(0, 8).map((doc) => ({

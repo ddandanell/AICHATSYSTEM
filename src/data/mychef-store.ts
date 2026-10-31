@@ -1,18 +1,44 @@
+/**
+ * Neon mychef_inbox store.
+ *
+ * Learning Queue (CBLS): clusters decision_records + feedback into pending
+ * learning-pass / ledger-rule proposals. Approve writes situational knowledge.
+ * Idempotency: audit_log action learn:processed per decision id (no DDL).
+ * Never auto-activates proposals and never sends.
+ * Docs: cbls-architecture.md / handoff.md in the project agent store.
+ */
 import { appPool } from "@/db/client";
 import { decryptSecret, encryptSecret, keyHint } from "@/lib/crypto";
 import { localStructuredDraft } from "@/lib/draft";
 import { tokenize } from "@/lib/embed";
 import { groupForTitle, type KnowledgeGroup } from "@/lib/knowledge-groups";
+import {
+  buildProposalContent,
+  isKnowledgeGapReason,
+  parseProposalMeta,
+  queueTypeForReason,
+  type QueueType,
+} from "@/lib/learning-queue";
 import type { Provider } from "@/lib/providers";
 import { PROVIDERS } from "@/lib/providers";
 import type { HumanDecision, Outcome } from "@/lib/reason-codes";
+import type { Pool, PoolClient } from "pg";
 
 export const MYCHEF_WORKSPACE = "mychef";
 
+/** Exclude proposal / rule sources from the curated library count (the 12). */
+const LIBRARY_SOURCES_SQL = `source not in ('ledger-rule', 'learning-pass', 'situational')`;
+
+type Db = Pool | PoolClient;
 type QueryResult<T> = T[];
 
 async function query<T>(text: string, params: unknown[] = []): Promise<QueryResult<T>> {
   const result = await appPool.query(text, params);
+  return result.rows as T[];
+}
+
+async function rows<T>(db: Db, text: string, params: unknown[] = []): Promise<QueryResult<T>> {
+  const result = await db.query(text, params);
   return result.rows as T[];
 }
 
@@ -45,7 +71,7 @@ export async function dashboardCounts() {
     `select
        (select count(*) from mychef_inbox.contacts where workspace_id = $1) as contacts,
        (select count(*) from mychef_inbox.messages where workspace_id = $1) as messages,
-       (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source is distinct from 'ledger-rule') as knowledge,
+       (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and ${LIBRARY_SOURCES_SQL}) as knowledge,
        (select count(*) from mychef_inbox.conversations c
          where c.workspace_id = $1 and c.status = 'needs_reply'
            and not exists (
@@ -53,7 +79,7 @@ export async function dashboardCounts() {
              where d.workspace_id = c.workspace_id and d.conversation_id = c.id
            )) as needs_reply,
        (select count(*) from mychef_inbox.decision_records where workspace_id = $1) as decisions,
-       (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source = 'ledger-rule' and status = 'pending') as candidates`,
+       (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source in ('ledger-rule', 'learning-pass') and status = 'pending') as candidates`,
     [MYCHEF_WORKSPACE],
   );
   const row = rows[0];
@@ -300,7 +326,11 @@ async function rankKnowledge(inbound: string) {
   const docs = await query<{ id: string; title: string; content: string }>(
     `select id, title, content
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source is distinct from 'ledger-rule'`,
+     where workspace_id = $1
+       and (
+         ${LIBRARY_SOURCES_SQL}
+         or (source = 'situational' and status = 'approved')
+       )`,
     [MYCHEF_WORKSPACE],
   );
   return docs
@@ -457,7 +487,11 @@ export async function listStoredKnowledge(): Promise<StoredKnowledge[]> {
   }>(
     `select id, title, content, project_id
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source is distinct from 'ledger-rule'
+     where workspace_id = $1
+       and (
+         ${LIBRARY_SOURCES_SQL}
+         or (source = 'situational' and status = 'approved')
+       )
      order by title`,
     [MYCHEF_WORKSPACE],
   );
@@ -483,7 +517,7 @@ export async function listKnowledgeDrafts() {
   }>(
     `select id, title, status, project_id, source
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source is distinct from 'ledger-rule'
+     where workspace_id = $1 and ${LIBRARY_SOURCES_SQL}
      order by status, title`,
     [MYCHEF_WORKSPACE],
   );
@@ -501,7 +535,7 @@ export async function setKnowledgeStatus(
   const updated = await query<{ id: string }>(
     `update mychef_inbox.knowledge
      set status = $3, updated_at = now(), version = version + 1
-     where workspace_id = $1 and id = $2 and source is distinct from 'ledger-rule'
+     where workspace_id = $1 and id = $2 and ${LIBRARY_SOURCES_SQL}
      returning id`,
     [MYCHEF_WORKSPACE, id, status],
   );
@@ -542,10 +576,67 @@ export async function listRuleCandidates(): Promise<RuleRow[]> {
   return query<RuleRow>(
     `select id, title, content, status, category, updated_at
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source = 'ledger-rule'
+     where workspace_id = $1 and source in ('ledger-rule', 'learning-pass', 'situational')
      order by updated_at desc`,
     [MYCHEF_WORKSPACE],
   );
+}
+
+export type LearningQueueCard = {
+  id: string;
+  title: string;
+  content: string;
+  status: string;
+  source: string;
+  category: string;
+  updatedAt: Date;
+  queueType: QueueType;
+  evidence: string;
+  reason: string;
+  snippet: string;
+  diffs: { decisionId: string; ai: string; human: string }[];
+};
+
+export async function listLearningQueue(
+  filter: QueueType | "all" = "all",
+): Promise<LearningQueueCard[]> {
+  const rows = await query<{
+    id: string;
+    title: string;
+    content: string;
+    status: string;
+    source: string;
+    category: string;
+    updated_at: Date;
+  }>(
+    `select id, title, content, status, source, category, updated_at
+     from mychef_inbox.knowledge
+     where workspace_id = $1
+       and source in ('ledger-rule', 'learning-pass', 'situational')
+     order by
+       case status when 'pending' then 0 when 'approved' then 1 else 2 end,
+       updated_at desc`,
+    [MYCHEF_WORKSPACE],
+  );
+  return rows
+    .map((row) => {
+      const meta = parseProposalMeta(row.content);
+      return {
+        id: row.id,
+        title: row.title,
+        content: row.content,
+        status: row.status,
+        source: row.source,
+        category: row.category,
+        updatedAt: row.updated_at,
+        queueType: meta.queueType,
+        evidence: meta.evidence,
+        reason: meta.reason,
+        snippet: meta.snippet || row.title,
+        diffs: meta.diffs,
+      };
+    })
+    .filter((card) => filter === "all" || card.queueType === filter);
 }
 
 export async function runMychefLearning(actorId: string) {
@@ -602,12 +693,210 @@ export async function runMychefLearning(actorId: string) {
   return { created, goodAsDrafted, decayed: decay.length };
 }
 
+/**
+ * CBLS nightly / manual learning pass.
+ * Clusters unprocessed decision_records (last 30 days) by reason_code.
+ * Writes pending learning-pass or ledger-rule rows with AI vs human diffs.
+ * Marks each clustered decision with audit learn:processed (idempotent).
+ * Does not approve, does not touch curated library rows, does not send.
+ */
+export async function runLearningPass(actorId: string, db: Db = appPool) {
+  const grouped = await rows<{ reason_code: string; n: string }>(
+    db,
+    `select d.reason_code, count(*)::text as n
+     from mychef_inbox.decision_records d
+     join mychef_inbox.feedback f on f.id = d.feedback_id
+     where d.workspace_id = $1
+       and d.created_at >= now() - interval '30 days'
+       and d.reason_code <> 'auto_sent_candidate'
+       and not exists (
+         select 1 from mychef_inbox.audit_log a
+         where a.workspace_id = d.workspace_id
+           and a.record_id = d.id::text
+           and a.action = 'learn:processed'
+       )
+     group by d.reason_code`,
+    [MYCHEF_WORKSPACE],
+  );
+
+  let proposed = 0;
+  let refreshed = 0;
+  let skippedGood = 0;
+  let clustered = 0;
+  let processed = 0;
+
+  for (const row of grouped) {
+    const count = Number(row.n);
+    if (row.reason_code === "good_as_drafted") {
+      skippedGood += count;
+      const goodIds = await rows<{ id: string }>(
+        db,
+        `select d.id::text as id
+         from mychef_inbox.decision_records d
+         where d.workspace_id = $1
+           and d.reason_code = 'good_as_drafted'
+           and d.created_at >= now() - interval '30 days'
+           and not exists (
+             select 1 from mychef_inbox.audit_log a
+             where a.workspace_id = d.workspace_id
+               and a.record_id = d.id::text
+               and a.action = 'learn:processed'
+           )`,
+        [MYCHEF_WORKSPACE],
+      );
+      for (const item of goodIds) {
+        await rows(
+          db,
+          `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+           values ($1, $2, 'learn:processed', $3)`,
+          [MYCHEF_WORKSPACE, actorId, item.id],
+        );
+        processed += 1;
+      }
+      continue;
+    }
+
+    const proposal = statementFor(row.reason_code, count);
+    if (!proposal) continue;
+    clustered += 1;
+
+    const evidenceRows = await rows<{
+      id: string;
+      original_draft: string;
+      edited_draft: string;
+    }>(
+      db,
+      `select d.id::text as id, f.original_draft, f.edited_draft
+       from mychef_inbox.decision_records d
+       join mychef_inbox.feedback f on f.id = d.feedback_id
+       where d.workspace_id = $1
+         and d.reason_code = $2
+         and d.created_at >= now() - interval '30 days'
+         and not exists (
+           select 1 from mychef_inbox.audit_log a
+           where a.workspace_id = d.workspace_id
+             and a.record_id = d.id::text
+             and a.action = 'learn:processed'
+         )
+       order by d.created_at desc
+       limit 3`,
+      [MYCHEF_WORKSPACE, row.reason_code],
+    );
+
+    const source = isKnowledgeGapReason(row.reason_code) ? "learning-pass" : "ledger-rule";
+    const id = `${source}:${proposal.key}`;
+    const queueType = queueTypeForReason(row.reason_code);
+    const content = buildProposalContent({
+      evidence: count,
+      group: proposal.group,
+      reason: row.reason_code,
+      queueType,
+      snippet: proposal.statement,
+      diffs: evidenceRows.map((item) => ({
+        decisionId: item.id,
+        ai: item.original_draft.slice(0, 800),
+        human: item.edited_draft.slice(0, 800),
+      })),
+    });
+
+    const outcome = await proposePendingRow(db, {
+      id,
+      source,
+      title: proposal.statement,
+      content,
+      category: queueType,
+    });
+    if (outcome === "created") proposed += 1;
+    if (outcome === "refreshed") refreshed += 1;
+
+    const allIds = await rows<{ id: string }>(
+      db,
+      `select d.id::text as id
+       from mychef_inbox.decision_records d
+       where d.workspace_id = $1
+         and d.reason_code = $2
+         and d.created_at >= now() - interval '30 days'
+         and not exists (
+           select 1 from mychef_inbox.audit_log a
+           where a.workspace_id = d.workspace_id
+             and a.record_id = d.id::text
+             and a.action = 'learn:processed'
+         )`,
+      [MYCHEF_WORKSPACE, row.reason_code],
+    );
+    for (const item of allIds) {
+      await rows(
+        db,
+        `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+         values ($1, $2, 'learn:processed', $3)`,
+        [MYCHEF_WORKSPACE, actorId, item.id],
+      );
+      processed += 1;
+    }
+  }
+
+  await rows(
+    db,
+    `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+     values ($1, $2, 'learn:pass', $3)`,
+    [MYCHEF_WORKSPACE, actorId, `clustered:${clustered}:proposed:${proposed}:processed:${processed}`],
+  );
+
+  return {
+    clustered,
+    proposed,
+    refreshed,
+    skippedGood,
+    processed,
+    sent: false as const,
+    activated: false as const,
+  };
+}
+
+async function proposePendingRow(
+  db: Db,
+  input: {
+    id: string;
+    source: "ledger-rule" | "learning-pass";
+    title: string;
+    content: string;
+    category: string;
+  },
+) {
+  const existing = await rows<{ status: string; source: string }>(
+    db,
+    `select status, source from mychef_inbox.knowledge where workspace_id = $1 and id = $2`,
+    [MYCHEF_WORKSPACE, input.id],
+  );
+  const row = existing[0];
+  if (row && (row.status === "approved" || row.status === "retired")) return "left" as const;
+  if (row && row.source !== input.source) return "left" as const;
+  if (row) {
+    await rows(
+      db,
+      `update mychef_inbox.knowledge
+       set title = $3, content = $4, category = $5, status = 'pending', updated_at = now(), version = version + 1
+       where workspace_id = $1 and id = $2 and source = $6 and status = 'pending'`,
+      [MYCHEF_WORKSPACE, input.id, input.title, input.content, input.category, input.source],
+    );
+    return "refreshed" as const;
+  }
+  await rows(
+    db,
+    `insert into mychef_inbox.knowledge
+       (workspace_id, id, title, content, category, status, scope, source, version, project_id, area_id, created_at, updated_at)
+     values ($1, $2, $3, $4, $5, 'pending', 'business', $6, 1, 'mychef', 'general', now(), now())`,
+    [MYCHEF_WORKSPACE, input.id, input.title, input.content, input.category, input.source],
+  );
+  return "created" as const;
+}
+
 function statementFor(reason: string, count: number): { key: string; group: string; statement: string } | null {
   if (["wrong_policy", "wrong_fact", "missing_knowledge"].includes(reason)) {
     return {
       key: reason,
       group: "knowledge_gap",
-      statement: `Propose a position edit. Reviewers marked ${reason} ${count} times.`,
+      statement: `When this case repeats, state the missing position clearly. Reviewers marked ${reason} ${count} times.`,
     };
   }
   if (
@@ -618,51 +907,67 @@ function statementFor(reason: string, count: number): { key: string; group: stri
     return {
       key: reason,
       group: "procedure_gap",
-      statement: `Propose a playbook edit. Reviewers marked ${reason} ${count} times.`,
+      statement: `Match the human tone and procedure for this situation. Reviewers marked ${reason} ${count} times.`,
     };
   }
   if (reason === "needs_human") {
     return {
       key: reason,
       group: "escalation",
-      statement: `Propose an escalation rule. Reviewers marked needs_human ${count} times.`,
+      statement: `Escalate this class of request to a person. Reviewers marked needs_human ${count} times.`,
     };
   }
   if (reason === "irrelevant_source") {
     return {
       key: reason,
       group: "retrieval",
-      statement: `Penalize irrelevant sources. Reviewers marked irrelevant_source ${count} times.`,
+      statement: `Do not lean on the cited source for this tag. Reviewers marked irrelevant_source ${count} times.`,
     };
   }
   return null;
 }
 
+/** Approve → situational knowledge. Dismiss → retired. Never edits the curated 12. */
 export async function setMychefRuleStatus(
   id: string,
   status: "approved" | "retired",
   actorId: string,
 ) {
-  const rows = await query<{ title: string; content: string; status: string }>(
-    `select title, content, status from mychef_inbox.knowledge
-     where workspace_id = $1 and id = $2 and source = 'ledger-rule'`,
+  const rows = await query<{ title: string; content: string; status: string; source: string }>(
+    `select title, content, status, source from mychef_inbox.knowledge
+     where workspace_id = $1 and id = $2 and source in ('ledger-rule', 'learning-pass', 'situational')`,
     [MYCHEF_WORKSPACE, id],
   );
   const rule = rows[0];
   if (!rule) return { ok: false as const, error: "That candidate is not in this workspace." };
   if (status === "approved" && rule.status !== "pending") {
-    return { ok: false as const, error: "Only a candidate can be activated." };
+    return { ok: false as const, error: "Only a pending snippet can be approved." };
   }
-  await query(
-    `update mychef_inbox.knowledge set status = $3, updated_at = now()
-     where workspace_id = $1 and id = $2`,
-    [MYCHEF_WORKSPACE, id, status],
-  );
-  await query(
-    `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
-     values ($1, $2, $3, $4)`,
-    [MYCHEF_WORKSPACE, actorId, `rule:${status}`, id],
-  );
+  if (status === "approved") {
+    await query(
+      `update mychef_inbox.knowledge
+       set status = 'approved', source = 'situational', updated_at = now(), version = version + 1
+       where workspace_id = $1 and id = $2 and source in ('ledger-rule', 'learning-pass') and status = 'pending'`,
+      [MYCHEF_WORKSPACE, id],
+    );
+    await query(
+      `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+       values ($1, $2, 'snippet:approved', $3)`,
+      [MYCHEF_WORKSPACE, actorId, id],
+    );
+  } else {
+    await query(
+      `update mychef_inbox.knowledge
+       set status = 'retired', updated_at = now(), version = version + 1
+       where workspace_id = $1 and id = $2 and source in ('ledger-rule', 'learning-pass', 'situational')`,
+      [MYCHEF_WORKSPACE, id],
+    );
+    await query(
+      `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+       values ($1, $2, 'snippet:dismissed', $3)`,
+      [MYCHEF_WORKSPACE, actorId, id],
+    );
+  }
   return { ok: true as const, title: rule.title, content: rule.content };
 }
 
