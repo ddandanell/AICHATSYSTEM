@@ -1,0 +1,16 @@
+import { connection } from "next/server";
+import { notFound, redirect } from "next/navigation";
+import { auth } from "@/auth";
+import { authorizeWorkspace, type WorkspaceAccess } from "@/lib/workspace-access";
+
+export async function getWorkspaceAccess(
+  slug: string,
+): Promise<Exclude<WorkspaceAccess, { status: "unknown" }>> {
+  await connection();
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) redirect("/login");
+  const access = await authorizeWorkspace(userId, slug);
+  if (access.status === "unknown") notFound();
+  return access;
+}

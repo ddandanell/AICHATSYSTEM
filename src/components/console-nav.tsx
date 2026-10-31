@@ -1,0 +1,46 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "cn";
+
+const LINKS = [
+  { label: "Inbox", href: (slug: string) => `/${slug}/inbox` },
+  { label: "Knowledge", href: (slug: string) => `/${slug}/knowledge` },
+  { label: "Keys", href: (slug: string) => `/${slug}/settings/keys` },
+  { label: "Candidates", href: (slug: string) => `/${slug}/candidates` },
+  { label: "Evals", href: (slug: string) => `/${slug}/evals` },
+  { label: "Team", href: (slug: string) => `/${slug}/team` },
+  { label: "Audit", href: (slug: string) => `/${slug}/audit` },
+];
+
+export function ConsoleNav({ slug }: { slug: string }) {
+  const pathname = usePathname();
+  return (
+    <nav className="flex gap-1 overflow-x-auto pb-1">
+      {LINKS.map((link) => {
+        const href = link.href(slug);
+        const active =
+          link.label === "Inbox"
+            ? pathname.startsWith(`/${slug}/inbox`)
+            : pathname === href || pathname.startsWith(`${href}/`);
+        return (
+          <Link
+            key={link.label}
+            href={href}
+            className={cn(
+              buttonVariants({
+                variant: active ? "default" : "ghost",
+                size: "sm",
+              }),
+            )}
+            aria-current={active ? "page" : undefined}
+          >
+            {link.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
