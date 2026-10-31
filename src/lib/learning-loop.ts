@@ -1,3 +1,6 @@
+/**
+ * Clusters local feedback into candidate rules. Does not activate them. Do not auto-send.
+ */
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { auditEvents, feedbackEvents, rules } from "@/db/schema";
 import { withTenant } from "@/db/tenant";

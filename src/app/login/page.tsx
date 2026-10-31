@@ -1,3 +1,6 @@
+/**
+ * Welcome sign-in. Operator password on Neon, email fallback on local Docker. Do not auto-send.
+ */
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";

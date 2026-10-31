@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Stores a ChatGPT export locally and may insert one pending knowledge row. Do not auto-send.
+ */
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

@@ -1,3 +1,6 @@
+/**
+ * Provider ids. Vercel AI Gateway and DeepSeek lead. Do not auto-send.
+ */
 export const PROVIDERS = [
   "vercel_gateway",
   "deepseek",

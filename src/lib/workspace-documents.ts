@@ -1,3 +1,6 @@
+/**
+ * Lists local documents for one org. Do not auto-send.
+ */
 import { asc, eq } from "drizzle-orm";
 import { documents } from "@/db/schema";
 import { withTenant } from "@/db/tenant";

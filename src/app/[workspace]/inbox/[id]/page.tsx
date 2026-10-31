@@ -1,3 +1,6 @@
+/**
+ * One conversation or recorded decision. Do not auto-send.
+ */
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { reviewAction } from "@/app/[workspace]/inbox/[id]/actions";

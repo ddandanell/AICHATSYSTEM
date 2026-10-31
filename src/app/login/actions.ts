@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Credential sign-in. Neon checks operator hashes. Do not auto-send.
+ */
 
 import { connection } from "next/server";
 import { isRedirectError } from "next/dist/client/components/redirect-error";

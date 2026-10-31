@@ -1,3 +1,6 @@
+/**
+ * Raw ChatGPT exports on disk. Not a mychef_inbox table. Do not auto-send.
+ */
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";

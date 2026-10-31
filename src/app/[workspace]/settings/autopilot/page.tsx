@@ -1,3 +1,6 @@
+/**
+ * Auto-pilot settings. Default off at /settings/autopilot. Do not auto-send.
+ */
 import { saveAutopilotAction } from "@/app/[workspace]/settings/autopilot/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";

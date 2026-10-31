@@ -1,3 +1,6 @@
+/**
+ * Lists webhook_receipts. Does not send. Do not auto-send.
+ */
 import { Badge } from "@/components/ui/badge";
 import {
   Empty,

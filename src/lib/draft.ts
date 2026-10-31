@@ -1,3 +1,6 @@
+/**
+ * Local structured draft. Quotes knowledge. Does not call a provider. Do not auto-send.
+ */
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { chunks, decisionRecords, documents, providerCredentials, rawMessages } from "@/db/schema";

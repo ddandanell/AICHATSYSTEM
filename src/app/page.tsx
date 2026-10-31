@@ -1,3 +1,6 @@
+/**
+ * Sends a signed-in user to their workspace. Do not auto-send.
+ */
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";

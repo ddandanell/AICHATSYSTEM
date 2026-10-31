@@ -1,3 +1,6 @@
+/**
+ * Neon queue list. Tables: conversations, contacts, decision_records. Do not auto-send.
+ */
 import Link from "next/link";
 import { listInbox } from "@/data/mychef-store";
 import { Badge } from "@/components/ui/badge";

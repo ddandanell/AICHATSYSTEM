@@ -1,4 +1,7 @@
 "use client";
+/**
+ * Three-pane review cockpit. Approve records a decision. Do not auto-send.
+ */
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";

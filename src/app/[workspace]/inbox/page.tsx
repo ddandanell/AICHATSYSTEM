@@ -1,3 +1,6 @@
+/**
+ * Inbox queue. Neon uses the three-pane cockpit. Do not auto-send.
+ */
 import Link from "next/link";
 import { draftAction } from "@/app/[workspace]/inbox/actions";
 import { DraftComposer } from "@/components/draft-composer";

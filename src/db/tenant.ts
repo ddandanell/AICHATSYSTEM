@@ -1,3 +1,6 @@
+/**
+ * Sets the local tenant GUC inside a transaction. Do not auto-send.
+ */
 import { sql } from "drizzle-orm";
 import { appDb, keyDb } from "./client";
 

@@ -1,4 +1,7 @@
 "use client";
+/**
+ * Workspace nav, including Keys and Auto-pilot. Do not auto-send.
+ */
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";

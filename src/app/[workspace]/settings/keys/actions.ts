@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Save, rotate, revoke, and test provider keys. Do not auto-send.
+ */
 
 import { revalidatePath } from "next/cache";
 import { getWorkspaceAccess } from "@/lib/context";

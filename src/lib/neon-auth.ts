@@ -1,3 +1,6 @@
+/**
+ * Neon Auth and JWKS URL constants. Not a database connection string. Do not auto-send.
+ */
 export const NEON_AUTH_URL =
   "https://ep-bitter-fire-azf4encj.neonauth.c-3.ap-southeast-1.aws.neon.tech/mychef/auth";
 

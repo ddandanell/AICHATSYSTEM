@@ -1,3 +1,6 @@
+/**
+ * Save and list provider keys. Neon table: integration_connections. Do not auto-send.
+ */
 import { and, eq } from "drizzle-orm";
 import { listMychefKeys, revokeMychefKey, saveMychefKey } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";

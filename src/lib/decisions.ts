@@ -1,3 +1,6 @@
+/**
+ * Local decision_records queries. Do not auto-send.
+ */
 import { and, desc, eq } from "drizzle-orm";
 import { withTenant } from "@/db/tenant";
 import {

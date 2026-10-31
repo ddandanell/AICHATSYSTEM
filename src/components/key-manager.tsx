@@ -1,4 +1,7 @@
 "use client";
+/**
+ * Keys UI for /settings/keys. Never renders the full secret. Do not auto-send.
+ */
 
 import { useActionState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";

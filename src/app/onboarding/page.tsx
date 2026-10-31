@@ -1,3 +1,6 @@
+/**
+ * First-workspace screen for the local ledger. Do not auto-send.
+ */
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";

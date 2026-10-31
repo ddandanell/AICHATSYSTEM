@@ -1,3 +1,6 @@
+/**
+ * Local hashed embeddings for documents and chunks. Do not auto-send.
+ */
 export const EMBEDDING_DIM = 256;
 
 const STOP = new Set([

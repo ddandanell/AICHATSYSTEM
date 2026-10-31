@@ -1,3 +1,6 @@
+/**
+ * Root shell and fonts. No ledger writes. Do not auto-send.
+ */
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";

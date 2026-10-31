@@ -1,3 +1,6 @@
+/**
+ * Private Chef, Catering, and VIP tags stored on contacts.facts. Do not auto-send.
+ */
 export const INBOX_TAGS = [
   { id: "private_chef", label: "Private Chef" },
   { id: "catering", label: "Catering" },

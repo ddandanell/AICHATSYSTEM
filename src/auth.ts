@@ -1,3 +1,6 @@
+/**
+ * Auth.js credentials. Neon requires an approved operator. Do not auto-send.
+ */
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";

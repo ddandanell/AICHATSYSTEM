@@ -1,8 +1,73 @@
 # Inbox mychef
 
-Review drafted client replies and record why a reply was right or wrong. The console is a decision ledger, a key vault, and a review queue. It is not a chat window, and it does not send messages.
+Review drafted client replies and record why a reply was right or wrong. The console is a decision ledger, a key vault, and a review queue. It is not a chat window.
 
-Each workspace is a tenant. Postgres row-level security is the boundary. Provider keys stay on the server, encrypted with AES-256-GCM. The browser only ever sees a four-character hint.
+**No auto-send.** Approving a draft writes the ledger. It does not message the guest. Auto-pilot defaults off. Phases 3–5 (menu engine, business intelligence, full autopilot) are not started.
+
+Current branch: `cursor/decision-ledger-console-d800`.
+
+Neon schema in use: `mychef_inbox` on database `mychef`, role `mychef_runtime`. That role cannot create tables. Filter every query by `workspace_id`.
+
+## How to run
+
+```bash
+npm install
+cp .env.example .env.local
+# Put real values only in .env.local. Never commit that file.
+npm run dev
+```
+
+The dev server listens on [http://127.0.0.1:4317](http://127.0.0.1:4317). Sign in at `/login`, then open `/mychef/dashboard`.
+
+Local Docker (optional, not Neon):
+
+```bash
+docker compose up -d
+npm run db:setup
+npm run dev
+```
+
+`npm run db:migrate` skips role creation when the current user cannot create roles. `npm run verify:rls` is for the local Harbor Kitchen and Northline seed. Do not point it at Neon.
+
+## Env vars
+
+Names only. Values stay in `.env.local`.
+
+| Name | Used for |
+|------|----------|
+| `DATABASE_URL` | App Postgres connection. Neon uses `mychef_runtime`. |
+| `KEY_READER_DATABASE_URL` | Read path for provider keys. |
+| `MIGRATION_DATABASE_URL` | Local migrations only. |
+| `AUTH_SECRET` | Auth.js session signing. |
+| `AUTH_URL` | Public app URL. |
+| `BYOK_ENCRYPTION_KEY` | AES-256-GCM master key for provider secrets. |
+| `CLERK_SECRET_KEY` | Optional Clerk. Unused while operator login is on. |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Optional Clerk publishable key. |
+| `AUTH_GOOGLE_ID` | Optional Google sign-in. |
+| `AUTH_GOOGLE_SECRET` | Optional Google sign-in. |
+| `GHL_WEBHOOK_SECRET` | Optional shared secret for `POST /api/webhooks/ghl`. |
+| `CRON_SECRET` | Bearer token for `GET /api/cron/learn`. |
+| `OPERATOR_BOOTSTRAP_EMAIL` | First approved operator. Default owner is `bali@mychef.id`. |
+| `OPERATOR_BOOTSTRAP_PASSWORD` | Hashed with scrypt on first boot. Never log it. |
+
+## Architecture
+
+Start with the store handoff, then the repo summary in [docs/HANDOFF.md](docs/HANDOFF.md).
+
+- Handoff: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md`
+- Roadmap (phases 1–2 only): `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/roadmap.md`
+- Inbox UX: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md`
+- Learning queue / CBLS: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/cbls-architecture.md`
+- Near-term steps: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/todo.md`
+- Notes: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/notes.md`
+- Preferences: `/cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/preferences.md`
+
+Settings that are accepted on this branch:
+
+- Provider keys: `/mychef/settings/keys` (`src/app/[workspace]/settings/keys`). Vercel AI Gateway and DeepSeek first. Hint only after save.
+- Auto-pilot: `/mychef/settings/autopilot` (`src/app/[workspace]/settings/autopilot`). Switch default **off**. A candidate mark still does not send.
+
+Each workspace is a tenant. Provider keys stay on the server, encrypted with AES-256-GCM. The browser only ever sees a four-character hint.
 
 ## Database
 
@@ -49,9 +114,11 @@ On the Neon inbox, sign-in is an approved operator email and password. The first
 
 ## Keys
 
+Page: `/mychef/settings/keys`. Code: `src/app/[workspace]/settings/keys` and `src/components/key-manager.tsx`.
+
 `BYOK_ENCRYPTION_KEY` is a 32-byte key, base64-encoded. The values in `.env.example` are for local development. Replace them before storing a real provider key.
 
-Vercel AI Gateway and DeepSeek are the first keys on `/mychef/settings/keys`. Gateway defaults to `https://ai-gateway.vercel.sh/v1`. DeepSeek uses `https://api.deepseek.com`. A saved key is shown only as a four-character hint. A connection test calls the provider from the server. If no active key is stored, the result is `No active key stored for this provider.` The test does not invent a completion. Azure OpenAI and Bedrock need an endpoint or signing setup this slice does not store, so those tests refuse to send the key.
+Vercel AI Gateway and DeepSeek are the first keys. Gateway defaults to `https://ai-gateway.vercel.sh/v1`. DeepSeek uses `https://api.deepseek.com`. A saved key is shown only as a four-character hint. Rows live on `mychef_inbox.integration_connections` (`kind = ai`, id = provider name). A connection test calls the provider from the server. If no active key is stored, the result is `No active key stored for this provider.` The test does not invent a completion. Azure OpenAI and Bedrock need an endpoint or signing setup this slice does not store, so those tests refuse to send the key. Storing or testing a key does not send a guest reply.
 
 The home dashboard lists waiting reviews, acceptance rate, escalations, and model spend. Spend stays `$0` because this console does not meter a provider call. Drafts stay local until a key is stored, and storing a key still does not send a guest reply.
 
@@ -87,8 +154,10 @@ On the dashboard, Run learning pass clusters decision records from the last 30 d
 
 ## Auto-pilot
 
-Auto-pilot is off until a workspace owner turns it on at `/mychef/settings/autopilot`. The switch and confidence threshold are stored on a separate `integration_connections` row named `autopilot`. Existing provider and GoHighLevel rows are not updated. While the switch is off, every draft stays pending. While it is on, a draft whose confidence meets the threshold and does not need a person is recorded as `auto_sent_candidate`. The banner says sending is not connected. No send call is made.
+Page: `/mychef/settings/autopilot`. Code: `src/app/[workspace]/settings/autopilot` and `src/lib/autopilot.ts`.
+
+The switch is **off** until an owner turns it on. The switch and confidence threshold are stored on `mychef_inbox.integration_connections` id `autopilot`. That row is not a provider key. Existing provider and GoHighLevel rows are not updated. While the switch is off, every draft stays pending. While it is on, a draft whose confidence meets the threshold and does not need a person is recorded as `auto_sent_candidate`. The banner says sending is not connected. No send call is made.
 
 ## What this slice does not do
 
-No GoHighLevel send, no MCP, and no automatic send. The receive stub only stores an inbound message and a pending draft.
+No GoHighLevel send, no WhatsApp Business API, no MCP, no menu engine, no business-intelligence board, and no automatic send. The receive stub only stores an inbound message and a pending draft.

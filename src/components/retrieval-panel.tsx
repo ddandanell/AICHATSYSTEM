@@ -1,3 +1,6 @@
+/**
+ * Shows retrieved knowledge and past decisions. Do not auto-send.
+ */
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import {

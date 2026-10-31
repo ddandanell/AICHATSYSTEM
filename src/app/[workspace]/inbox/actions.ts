@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Local ledger draft action. Tables: decision_records. Do not auto-send.
+ */
 
 import { redirect } from "next/navigation";
 import { getWorkspaceAccess } from "@/lib/context";

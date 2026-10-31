@@ -1,4 +1,7 @@
 "use client";
+/**
+ * Pending and reviewed tabs for the local queue. Do not auto-send.
+ */
 
 import { useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";

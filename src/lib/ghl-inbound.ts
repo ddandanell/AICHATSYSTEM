@@ -1,3 +1,6 @@
+/**
+ * Parses a GHL payload into mychef_inbox rows and a local draft. Do not auto-send.
+ */
 import { createHash, timingSafeEqual } from "node:crypto";
 import type pg from "pg";
 import { inboundFromGhl } from "@/channels/inbound";

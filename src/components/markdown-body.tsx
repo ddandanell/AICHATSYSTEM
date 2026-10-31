@@ -1,3 +1,6 @@
+/**
+ * Renders stored knowledge markdown. Do not auto-send.
+ */
 export function MarkdownBody({ source }: { source: string }) {
   const blocks = source
     .replace(/^# .+\n+/, "")

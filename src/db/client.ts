@@ -1,3 +1,6 @@
+/**
+ * Postgres pools for the app role. Refuses a migration superuser. Do not auto-send.
+ */
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema";

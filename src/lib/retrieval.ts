@@ -1,3 +1,6 @@
+/**
+ * Workspace-scoped retrieval over documents and chunks. Do not auto-send.
+ */
 import { sql } from "drizzle-orm";
 import { withTenant, type AppTx } from "@/db/tenant";
 import { embedText, toVectorLiteral } from "@/lib/embed";

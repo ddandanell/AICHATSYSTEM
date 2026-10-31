@@ -1,3 +1,6 @@
+/**
+ * Operator accounts. scrypt hash on integration_connections. Never log the password. Do not auto-send.
+ */
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { appPool } from "@/db/client";

@@ -1,3 +1,6 @@
+/**
+ * Session gate. Strips client tenant headers. Leaves GHL and cron public. Do not auto-send.
+ */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 

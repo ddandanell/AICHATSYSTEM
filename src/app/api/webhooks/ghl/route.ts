@@ -1,3 +1,6 @@
+/**
+ * GHL inbound stub. Writes contacts, conversations, messages, drafts, webhook_receipts. Do not auto-send.
+ */
 import { appPool } from "@/db/client";
 import { applyGhlPayload, authorizeGhl } from "@/lib/ghl-inbound";
 

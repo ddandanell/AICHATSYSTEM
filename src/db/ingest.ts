@@ -1,3 +1,6 @@
+/**
+ * Loads knowledge files into local documents and chunks. Do not auto-send.
+ */
 import type pg from "pg";
 import { chunkBody, embedText, toVectorLiteral } from "../lib/embed";
 import { listKnowledge } from "../lib/knowledge";

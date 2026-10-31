@@ -1,3 +1,6 @@
+/**
+ * Queue query for the cockpit. Tables: conversations, contacts, messages, drafts, decision_records. Do not auto-send.
+ */
 import { appPool } from "@/db/client";
 import { MYCHEF_WORKSPACE } from "@/data/mychef-store";
 import { tagsFromFacts, type InboxTag } from "@/lib/inbox-tags";

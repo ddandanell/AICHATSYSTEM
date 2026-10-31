@@ -1,3 +1,6 @@
+/**
+ * Lists audit_log for the workspace. Do not auto-send.
+ */
 import { desc } from "drizzle-orm";
 import { listAudit } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";

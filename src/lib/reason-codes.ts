@@ -1,3 +1,6 @@
+/**
+ * Review reason codes and human decisions. Do not auto-send.
+ */
 export const REASON_CODES = [
   { code: "wrong_policy", label: "Wrong policy" },
   { code: "wrong_fact", label: "Wrong fact" },

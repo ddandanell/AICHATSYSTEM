@@ -1,3 +1,6 @@
+/**
+ * Neon thread and recorded decision. Do not auto-send.
+ */
 import Link from "next/link";
 import { draftConversationAction, outcomeAction, reviewConversationAction } from "@/app/[workspace]/inbox/mychef-actions";
 import { getConversation, getRecordedDecision } from "@/data/mychef-store";

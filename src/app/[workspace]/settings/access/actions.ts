@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Approve or revoke operators. Table: integration_connections. Do not auto-send.
+ */
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

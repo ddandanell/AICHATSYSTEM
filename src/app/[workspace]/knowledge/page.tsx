@@ -1,3 +1,6 @@
+/**
+ * Knowledge list grouped for private-chef work. Do not auto-send.
+ */
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";

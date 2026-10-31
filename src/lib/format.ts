@@ -1,3 +1,6 @@
+/**
+ * Display helpers. Times for operators use Asia/Kuala_Lumpur. Do not auto-send.
+ */
 export function formatWhenKl(value: Date | string | null | undefined): string {
   if (!value) return "—";
   const date = value instanceof Date ? value : new Date(value);

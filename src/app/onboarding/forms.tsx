@@ -1,4 +1,7 @@
 "use client";
+/**
+ * Local onboarding forms. Do not auto-send.
+ */
 
 import { useActionState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";

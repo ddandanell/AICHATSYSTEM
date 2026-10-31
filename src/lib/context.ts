@@ -1,3 +1,6 @@
+/**
+ * Resolves the signed-in workspace from the URL. Do not auto-send.
+ */
 import { connection } from "next/server";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";

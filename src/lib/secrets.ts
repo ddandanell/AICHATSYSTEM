@@ -1,3 +1,6 @@
+/**
+ * Decrypts a provider key for one server call. Do not auto-send.
+ */
 import { sql } from "drizzle-orm";
 import { resolveMychefSecret } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";

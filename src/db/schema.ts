@@ -1,3 +1,6 @@
+/**
+ * Drizzle schema for the local ledger, not mychef_inbox. Do not auto-send.
+ */
 import {
   boolean,
   customType,

@@ -1,3 +1,6 @@
+/**
+ * Server-side provider key test. Does not draft a guest reply. Do not auto-send.
+ */
 import { markMychefKeyChecked, resolveMychefSecret } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";
 import { withTenant } from "@/db/tenant";

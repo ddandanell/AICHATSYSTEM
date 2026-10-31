@@ -1,3 +1,6 @@
+/**
+ * Provider keys at /settings/keys. Hint only. Do not auto-send.
+ */
 import { KeyManager } from "@/components/key-manager";
 import { NEON_AUTH_URL, NEON_JWKS_URL } from "@/lib/neon-auth";
 import { getWorkspaceAccess } from "@/lib/context";

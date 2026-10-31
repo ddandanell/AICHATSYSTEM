@@ -1,3 +1,6 @@
+/**
+ * Who may sign in. Hashes stay on the server. Do not auto-send.
+ */
 import { saveOperatorAction } from "@/app/[workspace]/settings/access/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";

@@ -1,3 +1,6 @@
+/**
+ * Workspace chrome and the no-send banner. Do not auto-send.
+ */
 import Link from "next/link";
 import { logoutAction } from "@/app/login/actions";
 import { ConsoleNav } from "@/components/console-nav";

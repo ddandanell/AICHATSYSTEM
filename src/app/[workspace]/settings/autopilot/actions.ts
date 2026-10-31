@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Saves the autopilot switch. Row id autopilot. Do not auto-send.
+ */
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

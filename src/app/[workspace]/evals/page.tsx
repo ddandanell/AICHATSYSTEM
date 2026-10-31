@@ -1,3 +1,6 @@
+/**
+ * Local eval cases against knowledge. Writes audit_log. Do not auto-send.
+ */
 import { desc } from "drizzle-orm";
 import { evalAction } from "@/app/[workspace]/ledger-actions";
 import { usesMychefInbox } from "@/db/mode";

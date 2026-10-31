@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Neon review, regenerate, and outcome. Tables: drafts, feedback, decision_records. Do not auto-send.
+ */
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

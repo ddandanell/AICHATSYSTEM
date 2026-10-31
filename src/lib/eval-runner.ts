@@ -1,3 +1,6 @@
+/**
+ * Runs local eval cases and writes ai_usage_log or audit rows. Do not auto-send.
+ */
 import { desc } from "drizzle-orm";
 import { evalCases, evalRuns } from "@/db/schema";
 import { withTenant } from "@/db/tenant";

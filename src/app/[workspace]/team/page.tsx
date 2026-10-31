@@ -1,3 +1,6 @@
+/**
+ * Workspace members. Local table: memberships. Do not auto-send.
+ */
 import { eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
 import {

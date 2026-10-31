@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Local workspace create/join. Tables: organizations, memberships. Do not auto-send.
+ */
 
 import { and, eq } from "drizzle-orm";
 import { connection } from "next/server";

@@ -1,3 +1,6 @@
+/**
+ * Import screen. Raw files under data/raw. Does not overwrite the 12 knowledge rows. Do not auto-send.
+ */
 import { curateArchiveAction, importArchiveAction } from "@/app/[workspace]/import/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";

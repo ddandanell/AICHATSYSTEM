@@ -1,3 +1,6 @@
+/**
+ * Unknown workspace. Do not auto-send.
+ */
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "cn";

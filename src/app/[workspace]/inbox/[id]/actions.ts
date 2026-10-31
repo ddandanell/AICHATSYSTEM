@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Local decision review. Tables: decision_records, feedback_events. Do not auto-send.
+ */
 
 import { redirect } from "next/navigation";
 import { getWorkspaceAccess } from "@/lib/context";

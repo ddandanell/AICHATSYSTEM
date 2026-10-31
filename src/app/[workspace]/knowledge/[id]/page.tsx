@@ -1,3 +1,6 @@
+/**
+ * One knowledge row. Table: knowledge or documents. Do not auto-send.
+ */
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MarkdownBody } from "@/components/markdown-body";

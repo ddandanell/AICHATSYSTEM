@@ -1,3 +1,6 @@
+/**
+ * Auto-pilot switch on integration_connections id autopilot. Default off. Do not auto-send.
+ */
 import type { Pool, PoolClient } from "pg";
 import { appPool } from "@/db/client";
 

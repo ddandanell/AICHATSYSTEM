@@ -1,3 +1,6 @@
+/**
+ * Reads local and Neon knowledge for the knowledge pages. Do not auto-send.
+ */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 

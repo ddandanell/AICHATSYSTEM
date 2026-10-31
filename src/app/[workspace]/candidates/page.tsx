@@ -1,3 +1,6 @@
+/**
+ * Learning queue. Pending knowledge rows only. Do not auto-send.
+ */
 import { desc } from "drizzle-orm";
 import { knowledgeStatusAction, learnAction, learnPassAction, ruleStatusAction } from "@/app/[workspace]/ledger-actions";
 import { listKnowledgeDrafts, listRuleCandidates } from "@/data/mychef-store";

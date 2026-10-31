@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Learning pass and rule status. Writes pending knowledge only. Do not auto-send.
+ */
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

@@ -1,3 +1,6 @@
+/**
+ * Applies local SQL migrations. Skips role DDL when the user cannot create roles. Do not auto-send.
+ */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import pg from "pg";

@@ -1,3 +1,6 @@
+/**
+ * Nightly learning pass. Reads decision_records and writes pending knowledge only. Do not auto-send.
+ */
 import { timingSafeEqual } from "node:crypto";
 import { runLearningPass } from "@/data/mychef-store";
 

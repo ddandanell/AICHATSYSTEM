@@ -1,3 +1,6 @@
+/**
+ * Home metrics from mychef_inbox counts. Spend stays zero. Do not auto-send.
+ */
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { learnPassAction } from "@/app/[workspace]/ledger-actions";

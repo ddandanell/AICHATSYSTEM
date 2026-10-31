@@ -1,3 +1,6 @@
+/**
+ * Session user id on the Auth.js types. Do not auto-send.
+ */
 import "next-auth";
 
 declare module "next-auth" {

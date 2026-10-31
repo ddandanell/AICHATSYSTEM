@@ -1,3 +1,6 @@
+/**
+ * Channel adapter seam. GHL now. WhatsApp Business is not built. Do not auto-send.
+ */
 export const GHL_CHANNEL = "ghl" as const;
 export const WHATSAPP_CHANNEL = "whatsapp" as const;
 

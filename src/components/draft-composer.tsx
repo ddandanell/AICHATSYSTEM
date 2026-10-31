@@ -1,4 +1,7 @@
 "use client";
+/**
+ * Paste one inbound message for a local draft. Do not auto-send.
+ */
 
 import { useActionState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";

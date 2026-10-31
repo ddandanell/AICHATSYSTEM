@@ -1,3 +1,6 @@
+/**
+ * Workspace loading state. Do not auto-send.
+ */
 import { Spinner } from "@/components/ui/spinner";
 
 export default function Loading() {

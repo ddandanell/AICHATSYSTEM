@@ -1,3 +1,6 @@
+/**
+ * Neon mychef_inbox reads and writes: knowledge, conversations, drafts, feedback, decision_records, audit_log, integration_connections. Do not auto-send.
+ */
 import type { Pool, PoolClient } from "pg";
 import { appPool } from "@/db/client";
 import { recordAutoSendCandidateIfEnabled } from "@/lib/autopilot";

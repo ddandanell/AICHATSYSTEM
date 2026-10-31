@@ -1,3 +1,6 @@
+/**
+ * Membership check. Neon allows only an approved operator. Do not auto-send.
+ */
 import { and, eq, sql } from "drizzle-orm";
 import { appDb } from "@/db/client";
 import { usesMychefInbox } from "@/db/mode";

@@ -1,3 +1,6 @@
+/**
+ * Groups knowledge into bookings, dietary, pricing, staffing, complaints. Do not auto-send.
+ */
 export const KNOWLEDGE_GROUPS = [
   { id: "bookings", label: "Bookings" },
   { id: "dietary", label: "Dietary" },

@@ -1,3 +1,6 @@
+/**
+ * AES-256-GCM for provider secrets. Do not auto-send.
+ */
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const NONCE_LENGTH = 12;

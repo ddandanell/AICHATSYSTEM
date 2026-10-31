@@ -1,3 +1,6 @@
+/**
+ * Seeds Harbor Kitchen and Northline on local Postgres. Do not auto-send.
+ */
 import pg from "pg";
 import { ingestRetrieval } from "./ingest";
 import {

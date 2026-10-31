@@ -1,3 +1,6 @@
+/**
+ * Detects Neon mychef_runtime versus local Docker. Do not auto-send.
+ */
 import { createHash } from "node:crypto";
 
 export function usesMychefInbox(): boolean {

@@ -1,4 +1,7 @@
 "use server";
+/**
+ * Inbox review actions. Writes feedback and decision_records. Do not auto-send.
+ */
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

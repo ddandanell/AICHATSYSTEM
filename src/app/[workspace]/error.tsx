@@ -1,4 +1,7 @@
 "use client";
+/**
+ * Workspace error boundary. Do not auto-send.
+ */
 
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
