@@ -1,7 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { runMychefEvals, runMychefLearning, setMychefRuleStatus } from "@/data/mychef-store";
+import {
+  runMychefEvals,
+  runMychefLearning,
+  setKnowledgeStatus,
+  setMychefRuleStatus,
+} from "@/data/mychef-store";
 import { getWorkspaceAccess } from "@/lib/context";
 import { runWorkspaceEvals } from "@/lib/eval-runner";
 import { runLearningLoop, setRuleStatus } from "@/lib/learning-loop";
@@ -31,6 +36,19 @@ export async function ruleStatusAction(slug: string, formData: FormData) {
   } else if (status === "active" || status === "deprecated") {
     await setRuleStatus(access.ctx.orgId, id, status);
   }
+  revalidatePath(`/${slug}/candidates`);
+}
+
+export async function knowledgeStatusAction(slug: string, formData: FormData) {
+  const access = await getWorkspaceAccess(slug);
+  if (access.status !== "ok" || !canReview(access.ctx.role)) return;
+  const id = String(formData.get("id") ?? "");
+  const status = String(formData.get("status") ?? "");
+  if (!id) return;
+  if (status !== "pending" && status !== "approved" && status !== "retired") return;
+  if (!usesMychefInbox()) return;
+  await setKnowledgeStatus(id, status, access.ctx.email || access.ctx.userId);
+  revalidatePath(`/${slug}/knowledge`);
   revalidatePath(`/${slug}/candidates`);
 }
 

@@ -67,10 +67,38 @@ export async function dashboardCounts() {
   };
 }
 
-export async function listInbox(status: "pending_review" | "reviewed") {
+const PAGE_SIZE = 25;
+
+function pageOffset(page: number) {
+  const safe = Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
+  return { page: safe, offset: (safe - 1) * PAGE_SIZE };
+}
+
+export async function listInbox(
+  status: "pending_review" | "reviewed",
+  page = 1,
+  search = "",
+) {
+  const requested = pageOffset(page);
+  const needle = search.trim().replace(/[%_]/g, "");
   if (status === "reviewed") {
-    return query<{
+    const totalRows = await query<{ n: string }>(
+      `select count(*)::text as n
+       from mychef_inbox.decision_records d
+       left join mychef_inbox.conversations c
+         on c.workspace_id = d.workspace_id and c.id = d.conversation_id
+       left join mychef_inbox.contacts ct
+         on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
+       where d.workspace_id = $1
+         and ($2::text = '' or ct.name ilike '%' || $2 || '%')`,
+      [MYCHEF_WORKSPACE, needle],
+    );
+    const total = Number(totalRows[0]?.n ?? 0);
+    const safePage = Math.min(requested.page, Math.max(1, Math.ceil(total / PAGE_SIZE)));
+    const offset = (safePage - 1) * PAGE_SIZE;
+    const rows = await query<{
       id: string;
+      name: string | null;
       inbound: string | null;
       draft: string | null;
       human_decision: string;
@@ -78,6 +106,7 @@ export async function listInbox(status: "pending_review" | "reviewed") {
       created_at: Date;
     }>(
       `select d.id::text as id,
+              ct.name,
               left(m.body, 180) as inbound,
               left(f.original_draft, 180) as draft,
               d.human_decision,
@@ -85,6 +114,10 @@ export async function listInbox(status: "pending_review" | "reviewed") {
               d.created_at
        from mychef_inbox.decision_records d
        join mychef_inbox.feedback f on f.id = d.feedback_id
+       left join mychef_inbox.conversations c
+         on c.workspace_id = d.workspace_id and c.id = d.conversation_id
+       left join mychef_inbox.contacts ct
+         on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
        left join lateral (
          select body from mychef_inbox.messages
          where workspace_id = d.workspace_id
@@ -94,30 +127,42 @@ export async function listInbox(status: "pending_review" | "reviewed") {
          limit 1
        ) m on true
        where d.workspace_id = $1
+         and ($2::text = '' or ct.name ilike '%' || $2 || '%')
        order by d.created_at desc
-       limit 40`,
-      [MYCHEF_WORKSPACE],
+       limit $3 offset $4`,
+      [MYCHEF_WORKSPACE, needle, PAGE_SIZE, offset],
     );
+    return { rows, total, page: safePage, pageSize: PAGE_SIZE };
   }
+  const totalRows = await query<{ n: string }>(
+    `select count(*)::text as n
+     from mychef_inbox.conversations c
+     join mychef_inbox.contacts ct
+       on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
+     where c.workspace_id = $1
+       and c.status = 'needs_reply'
+       and ($2::text = '' or ct.name ilike '%' || $2 || '%')
+       and not exists (
+         select 1 from mychef_inbox.decision_records d
+         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
+       )`,
+    [MYCHEF_WORKSPACE, needle],
+  );
+  const total = Number(totalRows[0]?.n ?? 0);
+  const safePage = Math.min(requested.page, Math.max(1, Math.ceil(total / PAGE_SIZE) || 1));
+  const offset = (safePage - 1) * PAGE_SIZE;
   const rows = await query<{
     id: string;
     name: string | null;
     inbound: string | null;
     draft: string | null;
     last_message_at: Date | null;
-    waiting: string;
   }>(
     `select c.id,
             ct.name,
             left(m.body, 180) as inbound,
             left(dr.body, 180) as draft,
-            c.last_message_at,
-            (select count(*) from mychef_inbox.conversations c2
-              where c2.workspace_id = $1 and c2.status = 'needs_reply'
-                and not exists (
-                  select 1 from mychef_inbox.decision_records d
-                  where d.workspace_id = c2.workspace_id and d.conversation_id = c2.id
-                ))::text as waiting
+            c.last_message_at
      from mychef_inbox.conversations c
      join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
@@ -133,15 +178,16 @@ export async function listInbox(status: "pending_review" | "reviewed") {
      ) dr on true
      where c.workspace_id = $1
        and c.status = 'needs_reply'
+       and ($2::text = '' or ct.name ilike '%' || $2 || '%')
        and not exists (
          select 1 from mychef_inbox.decision_records d
          where d.workspace_id = c.workspace_id and d.conversation_id = c.id
        )
      order by c.last_message_at desc nulls last
-     limit 40`,
-    [MYCHEF_WORKSPACE],
+     limit $3 offset $4`,
+    [MYCHEF_WORKSPACE, needle, PAGE_SIZE, offset],
   );
-  return rows;
+  return { rows, total, page: safePage, pageSize: PAGE_SIZE };
 }
 
 export async function getConversation(id: string) {
@@ -173,8 +219,14 @@ export async function getConversation(id: string) {
      limit 40`,
     [MYCHEF_WORKSPACE, id],
   );
-  const drafts = await query<{ id: string; body: string; model: string | null; created_at: Date }>(
-    `select id::text as id, body, model, created_at
+  const drafts = await query<{
+    id: string;
+    body: string;
+    model: string | null;
+    created_at: Date;
+    source_ids: unknown;
+  }>(
+    `select id::text as id, body, model, created_at, source_ids
      from mychef_inbox.drafts
      where workspace_id = $1 and conversation_id = $2
      order by created_at desc
@@ -345,7 +397,7 @@ export async function reviewConversation(
       `insert into mychef_inbox.decision_records
          (workspace_id, conversation_id, project_id, feedback_id, reason_code, rationale, why_not,
           rejected_alternative, human_decision, source_refs, author_id)
-       values ($1, $2, $3, $4::uuid, $5, $6, $7, $8, $9, '[]'::jsonb, $10)
+       values ($1, $2, $3, $4::uuid, $5, $6, $7, $8, $9, $11::jsonb, $10)
        returning id::text as id`,
       [
         MYCHEF_WORKSPACE,
@@ -358,6 +410,7 @@ export async function reviewConversation(
         input.humanDecision === "escalated" ? "escalated" : "",
         human,
         authorId,
+        JSON.stringify(conversation.draft.source_ids ?? []),
       ],
     );
     const decisionId = recorded.rows[0]?.id;
@@ -418,6 +471,47 @@ export async function listStoredKnowledge(): Promise<StoredKnowledge[]> {
 export async function getStoredKnowledge(id: string) {
   const rows = await listStoredKnowledge();
   return rows.find((row) => row.id === id) ?? null;
+}
+
+export async function listKnowledgeDrafts() {
+  const rows = await query<{
+    id: string;
+    title: string;
+    status: string;
+    project_id: string;
+    source: string;
+  }>(
+    `select id, title, status, project_id, source
+     from mychef_inbox.knowledge
+     where workspace_id = $1 and source is distinct from 'ledger-rule'
+     order by status, title`,
+    [MYCHEF_WORKSPACE],
+  );
+  return rows.map((row) => ({
+    ...row,
+    group: groupForTitle(row.title, row.project_id),
+  }));
+}
+
+export async function setKnowledgeStatus(
+  id: string,
+  status: "pending" | "approved" | "retired",
+  actorId: string,
+) {
+  const updated = await query<{ id: string }>(
+    `update mychef_inbox.knowledge
+     set status = $3, updated_at = now(), version = version + 1
+     where workspace_id = $1 and id = $2 and source is distinct from 'ledger-rule'
+     returning id`,
+    [MYCHEF_WORKSPACE, id, status],
+  );
+  if (updated.length === 0) return { ok: false as const, error: "That knowledge row is not in this workspace." };
+  await query(
+    `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+     values ($1, $2, $3, $4)`,
+    [MYCHEF_WORKSPACE, actorId, `knowledge:${status}`, id],
+  );
+  return { ok: true as const };
 }
 
 export async function addPosition(input: {

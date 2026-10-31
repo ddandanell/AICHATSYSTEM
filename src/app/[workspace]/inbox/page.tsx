@@ -36,7 +36,11 @@ export default async function InboxPage({
   if (access.status !== "ok") return null;
   const status = query.status === "reviewed" ? "reviewed" : "pending_review";
   if (usesMychefInbox()) {
-    return <MychefQueue slug={access.ctx.orgSlug} status={status} />;
+    const page = Number(query.page ?? "1");
+    const search = typeof query.q === "string" ? query.q : "";
+    return (
+      <MychefQueue slug={access.ctx.orgSlug} status={status} page={page} search={search} />
+    );
   }
   const rows = await listDecisions(access.ctx.orgId, status);
   const draft = draftAction.bind(null, access.ctx.orgSlug);

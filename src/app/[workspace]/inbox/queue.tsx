@@ -15,12 +15,18 @@ import { decisionLabel, reasonLabel } from "@/lib/reason-codes";
 export async function MychefQueue({
   slug,
   status,
+  page,
+  search,
 }: {
   slug: string;
   status: "pending_review" | "reviewed";
+  page: number;
+  search: string;
 }) {
-  const rows = await listInbox(status);
-  const waiting = status === "pending_review" ? Number(rows[0] && "waiting" in rows[0] ? rows[0].waiting : rows.length) : rows.length;
+  const inbox = await listInbox(status, page, search);
+  const { rows, total, pageSize } = inbox;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const current = Math.min(inbox.page, pages);
 
   return (
     <div className="flex flex-col gap-5">
@@ -28,15 +34,25 @@ export async function MychefQueue({
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-medium tracking-tight">Review queue</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Conversations that still need a reply, taken from the existing message store.
-            {status === "pending_review" && waiting > rows.length
-              ? ` Showing ${rows.length} of ${waiting}.`
-              : ""}{" "}
-            Automatic sending is not on.
+            {total} conversation{total === 1 ? "" : "s"}
+            {status === "pending_review" ? " still need a reply." : " have a recorded decision."}{" "}
+            Page {current} of {pages}. Automatic sending is not on.
           </p>
         </div>
         <QueueTabs slug={slug} status={status} />
       </div>
+      <form className="flex flex-wrap gap-2" action={`/${slug}/inbox`}>
+        {status === "reviewed" ? <input type="hidden" name="status" value="reviewed" /> : null}
+        <input
+          name="q"
+          defaultValue={search}
+          placeholder="Search by contact name"
+          className="h-9 min-w-48 flex-1 rounded-md border bg-background px-3 text-sm"
+        />
+        <button type="submit" className="h-9 rounded-md border px-3 text-sm">
+          Search
+        </button>
+      </form>
       {rows.length === 0 ? (
         <Empty className="border">
           <EmptyHeader>
@@ -86,6 +102,29 @@ export async function MychefQueue({
           ))}
         </ul>
       )}
+      {pages > 1 ? (
+        <nav className="flex flex-wrap gap-2">
+          {Array.from({ length: pages }, (_, index) => index + 1).map((number) => {
+            const params = new URLSearchParams();
+            if (status === "reviewed") params.set("status", "reviewed");
+            if (search) params.set("q", search);
+            params.set("page", String(number));
+            return (
+              <Link
+                key={number}
+                href={`/${slug}/inbox?${params.toString()}`}
+                className={
+                  number === current
+                    ? "rounded-md bg-primary px-3 py-1 text-sm text-primary-foreground"
+                    : "rounded-md border px-3 py-1 text-sm"
+                }
+              >
+                {number}
+              </Link>
+            );
+          })}
+        </nav>
+      ) : null}
     </div>
   );
 }

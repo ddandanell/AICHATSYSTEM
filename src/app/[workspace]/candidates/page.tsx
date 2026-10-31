@@ -1,6 +1,6 @@
 import { desc } from "drizzle-orm";
-import { learnAction, ruleStatusAction } from "@/app/[workspace]/ledger-actions";
-import { listRuleCandidates } from "@/data/mychef-store";
+import { knowledgeStatusAction, learnAction, ruleStatusAction } from "@/app/[workspace]/ledger-actions";
+import { listKnowledgeDrafts, listRuleCandidates } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";
 import { rules } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
@@ -31,6 +31,8 @@ export default async function CandidatesPage({
       });
   const learn = learnAction.bind(null, access.ctx.orgSlug);
   const update = ruleStatusAction.bind(null, access.ctx.orgSlug);
+  const knowledge = neon ? await listKnowledgeDrafts() : [];
+  const mark = knowledgeStatusAction.bind(null, access.ctx.orgSlug);
 
   return (
     <div className="flex flex-col gap-5">
@@ -97,6 +99,52 @@ export default async function CandidatesPage({
           })}
         </ul>
       )}
+      {neon ? (
+        <section className="flex flex-col gap-3">
+          <h3 className="text-sm font-medium">Knowledge drafts</h3>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            These are the existing knowledge rows. Approving or retiring changes status only. The row stays in the table.
+          </p>
+          <ul className="flex flex-col gap-3">
+            {knowledge.map((doc) => (
+              <li key={doc.id} className="flex flex-col gap-3 rounded-xl border px-4 py-3">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline">{doc.group}</Badge>
+                  <Badge variant="secondary">{doc.status}</Badge>
+                </div>
+                <p className="text-sm">{doc.title}</p>
+                {canReview(access.ctx.role) ? (
+                  <div className="flex flex-wrap gap-2">
+                    <form action={mark}>
+                      <input type="hidden" name="id" value={doc.id} />
+                      <input type="hidden" name="status" value="approved" />
+                      <Button type="submit" size="sm" variant="outline">
+                        Approve
+                      </Button>
+                    </form>
+                    <form action={mark}>
+                      <input type="hidden" name="id" value={doc.id} />
+                      <input type="hidden" name="status" value="retired" />
+                      <Button type="submit" size="sm" variant="ghost">
+                        Retire
+                      </Button>
+                    </form>
+                    {doc.status !== "pending" ? (
+                      <form action={mark}>
+                        <input type="hidden" name="id" value={doc.id} />
+                        <input type="hidden" name="status" value="pending" />
+                        <Button type="submit" size="sm" variant="ghost">
+                          Return to pending
+                        </Button>
+                      </form>
+                    ) : null}
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

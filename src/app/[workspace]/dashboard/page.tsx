@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { dashboardCounts } from "@/data/mychef-store";
+import { dashboardCounts, listInbox, listKnowledgeDrafts } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";
 import { documents } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
 import { getWorkspaceAccess } from "@/lib/context";
+import { excerpt } from "@/lib/format";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "cn";
@@ -20,6 +21,12 @@ export default async function DashboardPage({
   const counts = usesMychefInbox()
     ? await dashboardCounts()
     : await localCounts(access.ctx.orgId);
+  const recent = usesMychefInbox() ? await listInbox("pending_review", 1) : null;
+  const drafts = usesMychefInbox() ? await listKnowledgeDrafts() : [];
+  const groups = drafts.reduce<Record<string, number>>((acc, doc) => {
+    acc[doc.group] = (acc[doc.group] ?? 0) + 1;
+    return acc;
+  }, {});
 
   const cards = [
     { label: "Waiting for review", value: counts.needsReply, href: `/${access.ctx.orgSlug}/inbox` },
@@ -52,11 +59,42 @@ export default async function DashboardPage({
           </li>
         ))}
       </ul>
+      {Object.keys(groups).length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <h3 className="text-sm font-medium">Knowledge groups</h3>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(groups).map(([group, count]) => (
+              <Link
+                key={group}
+                href={`/${access.ctx.orgSlug}/knowledge?group=${group}`}
+                className="rounded-full border px-3 py-1 text-sm"
+              >
+                {group} · {count}
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+      {recent && recent.rows.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <h3 className="text-sm font-medium">Newest conversations that need a reply</h3>
+          <ul className="flex flex-col gap-2">
+            {recent.rows.slice(0, 6).map((row) => (
+              <li key={row.id}>
+                <Link href={`/${access.ctx.orgSlug}/inbox/${row.id}`} className="text-sm">
+                  <span className="font-medium">{row.name ?? "Contact"}</span>
+                  <span className="text-muted-foreground"> · {excerpt(row.inbound ?? "No inbound text", 90)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
       <Link
         href={`/${access.ctx.orgSlug}/inbox`}
         className={cn(buttonVariants({ variant: "default" }), "w-fit")}
       >
-        Open the review queue
+        Open all {counts.needsReply} waiting conversations
       </Link>
     </div>
   );
