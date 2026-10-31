@@ -67,6 +67,14 @@ On the pending inbox, a reviewer pastes one client message. Inside that workspac
 
 If no provider key is stored, the draft is deterministic: it quotes the closest position and says it was not produced by a provider. The draft path does not call a provider.
 
+## Import
+
+A signed-in reviewer uploads a ChatGPT project export (`.zip`, `.json`, or `.markdown`) at `/mychef/import`. The file is kept as a raw archive under `data/raw/mychef` for that workspace. That directory is local and is not committed. There is no bytea archive table in `mychef_inbox`, so the bytes are not written into knowledge or webhook receipts. Approving an archive inserts a new pending knowledge row with source `import:<id>`. Existing knowledge rows are not updated.
+
+## GoHighLevel receive stub
+
+`POST /api/webhooks/ghl` accepts a JSON message. If `GHL_WEBHOOK_SECRET` is set, the request must send the same value in `x-ghl-secret` or `Authorization: Bearer`. A message body creates or updates a conversation and a pending local draft. The route never calls a send API. A body that does not fit the inbox tables is written to `webhook_receipts` and listed at `/mychef/settings/webhooks`. Automatic sending stays off.
+
 ## What this slice does not do
 
-No GoHighLevel, no MCP, no nightly clustering job, no automatic send, and no eval runner. The nightly learning loop is not implemented. The `rules` table is there so a later job can write `candidate` rows and leave them inactive. Reason codes and the diagnosis rules are fixed in `src/lib/reason-codes.ts` and `src/lib/learning-loop.ts`.
+No GoHighLevel send, no MCP, and no automatic send. The receive stub only stores an inbound message and a pending draft.

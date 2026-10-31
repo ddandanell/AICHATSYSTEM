@@ -8,8 +8,10 @@ import { cn } from "cn";
 const LINKS = [
   { label: "Dashboard", href: (slug: string) => `/${slug}/dashboard` },
   { label: "Inbox", href: (slug: string) => `/${slug}/inbox` },
+  { label: "Import", href: (slug: string) => `/${slug}/import` },
   { label: "Knowledge", href: (slug: string) => `/${slug}/knowledge` },
   { label: "Keys", href: (slug: string) => `/${slug}/settings/keys` },
+  { label: "Webhooks", href: (slug: string) => `/${slug}/settings/webhooks` },
   { label: "Candidates", href: (slug: string) => `/${slug}/candidates` },
   { label: "Evals", href: (slug: string) => `/${slug}/evals` },
   { label: "Team", href: (slug: string) => `/${slug}/team` },
