@@ -34,17 +34,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatWhen } from "@/lib/format";
-import { PROVIDER_LABELS, PROVIDERS, type Provider } from "@/lib/providers";
+import { formatWhen, formatWhenKl } from "@/lib/format";
+import {
+  PRIMARY_PROVIDERS,
+  PROVIDER_LABELS,
+  PROVIDERS,
+  providerHost,
+  type Provider,
+} from "@/lib/providers";
 import type { ActionState } from "@/app/[workspace]/settings/keys/actions";
 
 type KeyRow = {
   id: string;
   provider: Provider;
   keyHint: string | null;
+  baseUrl: string | null;
   isActive: boolean;
   createdAt: string;
   rotatedAt: string | null;
+  verifiedAt: string | null;
+  lastError: string | null;
 };
 
 function Result({ state }: { state: ActionState }) {
@@ -92,10 +101,25 @@ export function KeyManager({
   const [saveState, saveForm, savePending] = useActionState(saveAction, null);
   const [testState, testForm, testPending] = useActionState(testAction, null);
 
+  const stored = new Map(rows.map((row) => [row.provider, row]));
+
   return (
     <div className="flex flex-col gap-6">
       <Result state={saveState} />
       <Result state={testState} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        {PRIMARY_PROVIDERS.map((provider) => (
+          <PrimaryKeyCard
+            key={provider}
+            provider={provider}
+            row={stored.get(provider) ?? null}
+            canManage={canManage}
+            saveAction={saveAction}
+            testAction={testAction}
+            revokeAction={revokeAction}
+          />
+        ))}
+      </div>
       {rows.length === 0 ? (
         <Card>
           <CardHeader>
@@ -139,10 +163,11 @@ export function KeyManager({
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Add a key</CardTitle>
+              <CardTitle>Add another provider</CardTitle>
               <CardDescription>
-                The full key is encrypted and never shown again. You will see
-                the last four characters.
+                OpenAI, Anthropic, Google, Azure, and Bedrock sit behind Vercel
+                AI Gateway and DeepSeek. The full key is encrypted and never
+                shown again.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -150,7 +175,7 @@ export function KeyManager({
                 <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor="add-provider">Provider</FieldLabel>
-                    <Select name="provider" defaultValue="openai">
+                    <Select name="provider" defaultValue="vercel_gateway">
                       <SelectTrigger id="add-provider" className="w-full">
                         <SelectValue />
                       </SelectTrigger>
@@ -170,7 +195,7 @@ export function KeyManager({
                     <Input
                       id="add-base-url"
                       name="base_url"
-                      placeholder="Vercel gateway only. DeepSeek uses its own host."
+                      placeholder="https://ai-gateway.vercel.sh/v1"
                       autoComplete="off"
                     />
                   </Field>
@@ -200,7 +225,7 @@ export function KeyManager({
               <form action={testForm} className="flex flex-col gap-4">
                 <Field>
                   <FieldLabel htmlFor="test-provider">Provider</FieldLabel>
-                  <Select name="provider" defaultValue="openai">
+                  <Select name="provider" defaultValue="vercel_gateway">
                     <SelectTrigger id="test-provider" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
@@ -237,6 +262,108 @@ export function KeyManager({
         </Alert>
       )}
     </div>
+  );
+}
+
+function PrimaryKeyCard({
+  provider,
+  row,
+  canManage,
+  saveAction,
+  testAction,
+  revokeAction,
+}: {
+  provider: Provider;
+  row: KeyRow | null;
+  canManage: boolean;
+  saveAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  testAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  revokeAction: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+}) {
+  const [saveState, saveForm, savePending] = useActionState(saveAction, null);
+  const [testState, testForm, testPending] = useActionState(testAction, null);
+  const [revokeState, revokeForm, revokePending] = useActionState(revokeAction, null);
+  const host = row?.baseUrl || providerHost(provider);
+  const status = !row ? "Not stored" : row.isActive ? "Active" : "Revoked";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{PROVIDER_LABELS[provider]}</CardTitle>
+        <CardDescription>
+          {provider === "vercel_gateway"
+            ? "Paste a Vercel AI Gateway key. Leave the base URL empty to use the default host."
+            : "Paste a DeepSeek key. Requests go to the DeepSeek host below."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={row?.isActive ? "secondary" : "outline"}>{status}</Badge>
+          <span className="text-sm text-muted-foreground">
+            {row?.keyHint ? `Hint •••• ${row.keyHint}` : "No hint yet"}
+          </span>
+        </div>
+        <p className="text-sm text-muted-foreground">{host}</p>
+        <p className="text-sm text-muted-foreground">
+          Last check {row?.verifiedAt ? formatWhenKl(row.verifiedAt) : "not run"}
+        </p>
+        {row?.lastError ? (
+          <Alert variant="destructive">
+            <AlertTitle>Last check failed</AlertTitle>
+            <AlertDescription>{row.lastError}</AlertDescription>
+          </Alert>
+        ) : null}
+        <Result state={saveState} />
+        <Result state={testState} />
+        <Result state={revokeState} />
+        {canManage ? (
+          <>
+            <form action={saveForm} className="flex flex-col gap-4">
+              <input type="hidden" name="provider" value={provider} />
+              <FieldGroup>
+                {provider === "vercel_gateway" ? (
+                  <Field>
+                    <FieldLabel htmlFor={`${provider}-base`}>Base URL</FieldLabel>
+                    <Input
+                      id={`${provider}-base`}
+                      name="base_url"
+                      defaultValue={row?.baseUrl ?? ""}
+                      placeholder="https://ai-gateway.vercel.sh/v1"
+                      autoComplete="off"
+                    />
+                  </Field>
+                ) : null}
+                <Field>
+                  <FieldLabel htmlFor={`${provider}-secret`}>
+                    {row?.isActive ? "Replacement key" : "Key"}
+                  </FieldLabel>
+                  <Input
+                    id={`${provider}-secret`}
+                    name="secret"
+                    type="password"
+                    autoComplete="off"
+                    required
+                  />
+                </Field>
+              </FieldGroup>
+              <PendingButton pending={savePending} label={row?.isActive ? "Replace key" : "Save key"} />
+            </form>
+            <div className="flex flex-wrap gap-2">
+              <form action={testForm}>
+                <input type="hidden" name="provider" value={provider} />
+                <PendingButton pending={testPending} label="Test connection" variant="outline" />
+              </form>
+              {row ? (
+                <form action={revokeForm}>
+                  <input type="hidden" name="provider" value={provider} />
+                  <PendingButton pending={revokePending} label="Revoke" variant="destructive" />
+                </form>
+              ) : null}
+            </div>
+          </>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 

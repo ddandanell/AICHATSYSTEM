@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import {
+  runLearningPass,
   runMychefEvals,
   runMychefLearning,
   setKnowledgeStatus,
@@ -22,6 +24,18 @@ export async function learnAction(slug: string) {
     await runLearningLoop(access.ctx.orgId, access.ctx.userId);
   }
   revalidatePath(`/${slug}/candidates`);
+}
+
+export async function learnPassAction(slug: string) {
+  const access = await getWorkspaceAccess(slug);
+  if (access.status !== "ok" || !canReview(access.ctx.role)) return;
+  if (!usesMychefInbox()) return;
+  const result = await runLearningPass(access.ctx.email || access.ctx.userId);
+  revalidatePath(`/${slug}/candidates`);
+  revalidatePath(`/${slug}/dashboard`);
+  redirect(
+    `/${slug}/dashboard?clustered=${result.clustered}&proposed=${result.proposed}&refreshed=${result.refreshed}`,
+  );
 }
 
 export async function ruleStatusAction(slug: string, formData: FormData) {

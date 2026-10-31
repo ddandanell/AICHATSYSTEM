@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type pg from "pg";
+import { recordAutoSendCandidateIfEnabled } from "@/lib/autopilot";
 import { localStructuredDraft } from "@/lib/draft";
 
 const WORKSPACE = "mychef";
@@ -149,7 +150,7 @@ export async function applyGhlPayload(
   if ((inserted.rowCount ?? 0) > 0) {
     const docs = await client.query<{ id: string; title: string; content: string }>(
       `select id, title, content from mychef_inbox.knowledge
-       where workspace_id = $1 and source is distinct from 'ledger-rule'`,
+       where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')`,
       [WORKSPACE],
     );
     const knowledge = docs.rows.slice(0, 8).map((doc) => ({
@@ -168,6 +169,39 @@ export async function applyGhlPayload(
        values ($1, $2, $3, 'ghl-webhook', 'ai', $4, 'local', $5::jsonb)`,
       [WORKSPACE, conversationId, draft.draftText, messageId, JSON.stringify(draft.sourceRefs)],
     );
+    await client.query("savepoint autopilot");
+    try {
+      const auto = await recordAutoSendCandidateIfEnabled(client, {
+        conversationId,
+        projectId: "mychef",
+        authorId: "ghl-webhook",
+        draftText: draft.draftText,
+        confidence: draft.confidence,
+        escalate: draft.escalate,
+        sourceRefs: draft.sourceRefs,
+      });
+      if (auto.fired) {
+        await writeReceipt(client, eventKey, {
+          source: "ghl",
+          verified,
+          fit: true,
+          draftCreated: true,
+          conversationId,
+          detail: "Inbound stored. Auto-pilot marked auto_sent_candidate. Sending is not connected.",
+          excerpt: parsed.body.slice(0, 160),
+        });
+        return {
+          status: 200,
+          eventKey,
+          fit: true,
+          draftCreated: true,
+          conversationId,
+          detail: "Stored. Sending is not connected.",
+        };
+      }
+    } catch {
+      await client.query("rollback to savepoint autopilot");
+    }
     draftCreated = true;
   }
 

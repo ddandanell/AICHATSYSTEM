@@ -96,6 +96,7 @@ export async function testKeyAction(
   const provider = providerFrom(formData);
   if (!provider) return { error: "Choose a provider." };
   const result = await testProviderConnection(access.ctx.orgId, provider);
+  revalidatePath(`/${slug}/settings/keys`);
   if (!result.ok) return { error: result.error };
-  return { message: "Provider accepted the key." };
+  return { message: "Provider accepted the key. The key stayed on the server." };
 }

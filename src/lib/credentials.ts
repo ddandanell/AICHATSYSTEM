@@ -5,7 +5,7 @@ import { withTenant } from "@/db/tenant";
 import { providerCredentials } from "@/db/schema";
 import { encryptSecret, keyHint } from "@/lib/crypto";
 import { dropProviderSecret } from "@/lib/secrets";
-import type { Provider } from "@/lib/providers";
+import { type Provider } from "@/lib/providers";
 
 function isUniqueViolation(error: unknown): boolean {
   const queue = [error];
@@ -22,10 +22,30 @@ const publicColumns = {
   id: providerCredentials.id,
   provider: providerCredentials.provider,
   keyHint: providerCredentials.keyHint,
+  baseUrl: providerCredentials.baseUrl,
   isActive: providerCredentials.isActive,
   createdAt: providerCredentials.createdAt,
   rotatedAt: providerCredentials.rotatedAt,
 };
+
+function cleanBaseUrl(
+  provider: Provider,
+  raw: string | null | undefined,
+): { ok: true; baseUrl: string | null } | { ok: false; error: string } {
+  if (provider !== "vercel_gateway") return { ok: true, baseUrl: null };
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return { ok: true, baseUrl: null };
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return { ok: false, error: "Enter an https base URL for Vercel AI Gateway." };
+  }
+  if (url.protocol !== "https:") {
+    return { ok: false, error: "The gateway base URL must use https." };
+  }
+  return { ok: true, baseUrl: url.toString().replace(/\/$/, "") };
+}
 
 export async function listCredentials(orgId: string) {
   if (usesMychefInbox()) {
@@ -34,16 +54,24 @@ export async function listCredentials(orgId: string) {
       id: row.id,
       provider: row.id as Provider,
       keyHint: row.config?.hint ?? null,
+      baseUrl: row.config?.base_url ?? null,
       isActive: row.enabled,
       createdAt: row.updated_at,
       rotatedAt: null as Date | null,
+      verifiedAt: row.verified_at,
+      lastError: row.last_error,
     }));
   }
   return withTenant(orgId, async (tx) => {
-    return tx
+    const rows = await tx
       .select(publicColumns)
       .from(providerCredentials)
       .orderBy(providerCredentials.provider);
+    return rows.map((row) => ({
+      ...row,
+      verifiedAt: null as Date | null,
+      lastError: null as string | null,
+    }));
   });
 }
 
@@ -60,8 +88,10 @@ export async function saveCredential(
   }
   const hint = keyHint(trimmed);
   const encrypted = encryptSecret(trimmed);
+  const base = cleanBaseUrl(provider, baseUrl);
+  if (!base.ok) return base;
   if (usesMychefInbox()) {
-    const saved = await saveMychefKey(provider, trimmed, baseUrl ?? null);
+    const saved = await saveMychefKey(provider, trimmed, base.baseUrl);
     dropProviderSecret(orgId, provider);
     return saved;
   }
@@ -74,7 +104,7 @@ export async function saveCredential(
         keyHint: hint,
         isActive: true,
         createdBy: userId,
-        ...(baseUrl ? { baseUrl } : {}),
+        ...(base.baseUrl ? { baseUrl: base.baseUrl } : {}),
       });
     });
   } catch (error) {
@@ -102,7 +132,7 @@ export async function rotateCredential(
   const hint = keyHint(trimmed);
   const encrypted = encryptSecret(trimmed);
   if (usesMychefInbox()) {
-    const saved = await saveMychefKey(provider, trimmed, null);
+    const saved = await saveMychefKey(provider, trimmed, null, true);
     dropProviderSecret(orgId, provider);
     return saved;
   }

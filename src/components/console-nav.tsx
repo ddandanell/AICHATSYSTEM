@@ -12,6 +12,7 @@ const LINKS = [
   { label: "Knowledge", href: (slug: string) => `/${slug}/knowledge` },
   { label: "Keys", href: (slug: string) => `/${slug}/settings/keys` },
   { label: "Webhooks", href: (slug: string) => `/${slug}/settings/webhooks` },
+  { label: "Auto-pilot", href: (slug: string) => `/${slug}/settings/autopilot` },
   { label: "Candidates", href: (slug: string) => `/${slug}/candidates` },
   { label: "Evals", href: (slug: string) => `/${slug}/evals` },
   { label: "Team", href: (slug: string) => `/${slug}/team` },

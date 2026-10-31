@@ -27,9 +27,10 @@ export default async function KeysPage({
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-medium tracking-tight">Provider keys</h2>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-          Keys are encrypted with the server master key and decrypted only for
-          a request. The page shows a four-character hint after save. Vercel AI
-          Gateway defaults to https://ai-gateway.vercel.sh/v1. DeepSeek uses
+          Start with Vercel AI Gateway and DeepSeek. Keys are encrypted with
+          the server master key and decrypted only for a request. The page
+          shows a four-character hint after save. Gateway defaults to
+          https://ai-gateway.vercel.sh/v1. DeepSeek uses
           https://api.deepseek.com. Azure and Bedrock tests do not send the key.
         </p>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -42,9 +43,12 @@ export default async function KeysPage({
           id: row.id,
           provider: row.provider as Provider,
           keyHint: row.keyHint,
+          baseUrl: row.baseUrl,
           isActive: row.isActive,
           createdAt: row.createdAt.toISOString(),
           rotatedAt: row.rotatedAt ? row.rotatedAt.toISOString() : null,
+          verifiedAt: row.verifiedAt ? row.verifiedAt.toISOString() : null,
+          lastError: row.lastError,
         }))}
         saveAction={saveKeyAction.bind(null, slug)}
         rotateAction={rotateKeyAction.bind(null, slug)}

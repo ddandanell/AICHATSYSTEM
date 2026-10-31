@@ -10,7 +10,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { usesMychefInbox } from "@/db/mode";
 import { getWorkspaceAccess } from "@/lib/context";
+import { readAutopilot } from "@/lib/autopilot";
 import { roleLabel } from "@/lib/format";
 import { listMyWorkspaces } from "@/lib/workspace-access";
 
@@ -46,6 +48,7 @@ export default async function WorkspaceLayout({
 
   const ctx = access.ctx;
   const workspaces = await listMyWorkspaces(ctx.userId);
+  const autopilot = usesMychefInbox() ? await readAutopilot() : { enabled: false, confidenceThreshold: 0.8 };
 
   return (
     <div className="flex min-h-full flex-col">
@@ -88,7 +91,9 @@ export default async function WorkspaceLayout({
           ) : null}
           <ConsoleNav slug={ctx.orgSlug} />
           <p className="text-sm text-muted-foreground">
-            Automatic sending is not on. A review stays in the ledger and does not message the client.
+            {autopilot.enabled
+              ? "Sending is not connected."
+              : "Automatic sending is not on. A review stays in the ledger and does not message the client."}
           </p>
         </div>
       </header>

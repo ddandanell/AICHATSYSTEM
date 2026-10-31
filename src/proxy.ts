@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_PATHS = [/^\/login\/?$/, /^\/api\/auth(\/|$)/, /^\/api\/webhooks\/ghl\/?$/];
+const PUBLIC_PATHS = [
+  /^\/login\/?$/,
+  /^\/api\/auth(\/|$)/,
+  /^\/api\/webhooks\/ghl\/?$/,
+  /^\/api\/cron\/learn\/?$/,
+];
 
 function hasSession(request: NextRequest) {
   return Boolean(

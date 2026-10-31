@@ -47,7 +47,9 @@ The session resolves the workspace from the URL (`/[workspace]/...`). Client `x-
 
 `BYOK_ENCRYPTION_KEY` is a 32-byte key, base64-encoded. The values in `.env.example` are for local development. Replace them before storing a real provider key.
 
-A connection test calls the provider from the server. If no active key is stored, the result is `No active key stored for this provider.` The test does not invent a completion. Azure OpenAI and Bedrock need an endpoint or signing setup this slice does not store, so those tests refuse to send the key.
+Vercel AI Gateway and DeepSeek are the first keys on `/mychef/settings/keys`. Gateway defaults to `https://ai-gateway.vercel.sh/v1`. DeepSeek uses `https://api.deepseek.com`. A saved key is shown only as a four-character hint. A connection test calls the provider from the server. If no active key is stored, the result is `No active key stored for this provider.` The test does not invent a completion. Azure OpenAI and Bedrock need an endpoint or signing setup this slice does not store, so those tests refuse to send the key.
+
+The home dashboard lists waiting reviews, acceptance rate, escalations, and model spend. Spend stays `$0` because this console does not meter a provider call. Drafts stay local until a key is stored, and storing a key still does not send a guest reply.
 
 ## Isolation check
 
@@ -74,6 +76,14 @@ A signed-in reviewer uploads a ChatGPT project export (`.zip`, `.json`, or `.mar
 ## GoHighLevel receive stub
 
 `POST /api/webhooks/ghl` accepts a JSON message. If `GHL_WEBHOOK_SECRET` is set, the request must send the same value in `x-ghl-secret` or `Authorization: Bearer`. A message body creates or updates a conversation and a pending local draft. The route never calls a send API. A body that does not fit the inbox tables is written to `webhook_receipts` and listed at `/mychef/settings/webhooks`. Automatic sending stays off.
+
+## Learning pass
+
+On the dashboard, Run learning pass clusters decision records from the last 30 days by reason. Proposals show up in the learning queue. Knowledge-gap reasons become pending `learning-pass` rows. Other reasons become pending `ledger-rule` rows. `good_as_drafted` is skipped. Approved and retired rows are not changed. `GET /api/cron/learn` runs the same pass when `Authorization: Bearer` matches `CRON_SECRET`. Vercel Cron calls that path daily at 02:00 Kuala Lumpur (18:00 UTC). The pass does not activate rules and does not send.
+
+## Auto-pilot
+
+Auto-pilot is off until a workspace owner turns it on at `/mychef/settings/autopilot`. The switch and confidence threshold are stored on a separate `integration_connections` row named `autopilot`. Existing provider and GoHighLevel rows are not updated. While the switch is off, every draft stays pending. While it is on, a draft whose confidence meets the threshold and does not need a person is recorded as `auto_sent_candidate`. The banner says sending is not connected. No send call is made.
 
 ## What this slice does not do
 

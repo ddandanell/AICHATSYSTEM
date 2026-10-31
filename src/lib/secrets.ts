@@ -22,6 +22,13 @@ function cacheKey(orgId: string, provider: string) {
 
 export function dropProviderSecret(orgId: string, provider: string) {
   cache.delete(cacheKey(orgId, provider));
+  cache.delete(cacheKey(orgId, `${provider}:base`));
+}
+
+export function cachedProviderBaseUrl(orgId: string, provider: string): string | null {
+  const hit = cache.get(cacheKey(orgId, `${provider}:base`));
+  if (!hit || hit.expires <= Date.now()) return null;
+  return hit.secret;
 }
 
 export async function resolveProviderSecret(
@@ -42,10 +49,14 @@ export async function resolveProviderSecret(
 
   const secret = await withKeyReader(orgId, async (tx) => {
     const result = await tx.execute(
-      sql`select encrypted_key from provider_credentials where provider = ${provider} and is_active = true limit 1`,
+      sql`select encrypted_key, base_url from provider_credentials where provider = ${provider} and is_active = true limit 1`,
     );
-    const row = result.rows[0] as { encrypted_key?: unknown } | undefined;
+    const row = result.rows[0] as { encrypted_key?: unknown; base_url?: string | null } | undefined;
     if (!row?.encrypted_key) return null;
+    if (row.base_url) {
+      const key = cacheKey(orgId, `${provider}:base`);
+      cache.set(key, { secret: row.base_url, expires: Date.now() + TTL_MS });
+    }
     return decryptSecret(asBytea(row.encrypted_key));
   });
 

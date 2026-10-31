@@ -3,7 +3,7 @@ import { usesMychefInbox } from "@/db/mode";
 import { withTenant } from "@/db/tenant";
 import { aiUsageLog } from "@/db/schema";
 import { DEEPSEEK_BASE, VERCEL_GATEWAY_DEFAULT, type Provider } from "@/lib/providers";
-import { resolveProviderSecret } from "@/lib/secrets";
+import { cachedProviderBaseUrl, resolveProviderSecret } from "@/lib/secrets";
 
 const NO_KEY = "No active key stored for this provider.";
 
@@ -77,9 +77,10 @@ export async function testProviderConnection(
   const stored = usesMychefInbox() ? await resolveMychefSecret(provider) : null;
   const secret = stored?.secret ?? (await resolveProviderSecret(orgId, provider));
   if (!secret) return { ok: false, error: NO_KEY };
+  const baseUrl = stored?.baseUrl ?? cachedProviderBaseUrl(orgId, provider);
 
   try {
-    await probe(provider, secret, stored?.baseUrl ?? null);
+    await probe(provider, secret, baseUrl);
   } catch (error) {
     const message =
       error instanceof SafeProviderError

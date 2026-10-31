@@ -1,18 +1,26 @@
+import type { Pool, PoolClient } from "pg";
 import { appPool } from "@/db/client";
+import { recordAutoSendCandidateIfEnabled } from "@/lib/autopilot";
 import { decryptSecret, encryptSecret, keyHint } from "@/lib/crypto";
 import { localStructuredDraft } from "@/lib/draft";
 import { tokenize } from "@/lib/embed";
 import { groupForTitle, type KnowledgeGroup } from "@/lib/knowledge-groups";
-import type { Provider } from "@/lib/providers";
-import { PROVIDERS } from "@/lib/providers";
+import { PROVIDER_LABELS, PROVIDERS, type Provider } from "@/lib/providers";
 import type { HumanDecision, Outcome } from "@/lib/reason-codes";
 
 export const MYCHEF_WORKSPACE = "mychef";
 
 type QueryResult<T> = T[];
 
+type Db = Pool | PoolClient;
+
 async function query<T>(text: string, params: unknown[] = []): Promise<QueryResult<T>> {
   const result = await appPool.query(text, params);
+  return result.rows as T[];
+}
+
+async function rows<T>(db: Db, text: string, params: unknown[] = []): Promise<T[]> {
+  const result = await db.query(text, params);
   return result.rows as T[];
 }
 
@@ -45,7 +53,7 @@ export async function dashboardCounts() {
     `select
        (select count(*) from mychef_inbox.contacts where workspace_id = $1) as contacts,
        (select count(*) from mychef_inbox.messages where workspace_id = $1) as messages,
-       (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source is distinct from 'ledger-rule') as knowledge,
+       (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')) as knowledge,
        (select count(*) from mychef_inbox.conversations c
          where c.workspace_id = $1 and c.status = 'needs_reply'
            and not exists (
@@ -53,7 +61,7 @@ export async function dashboardCounts() {
              where d.workspace_id = c.workspace_id and d.conversation_id = c.id
            )) as needs_reply,
        (select count(*) from mychef_inbox.decision_records where workspace_id = $1) as decisions,
-       (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source = 'ledger-rule' and status = 'pending') as candidates`,
+       (select count(*) from mychef_inbox.knowledge where workspace_id = $1 and source in ('ledger-rule', 'learning-pass') and status = 'pending') as candidates`,
     [MYCHEF_WORKSPACE],
   );
   const row = rows[0];
@@ -64,6 +72,52 @@ export async function dashboardCounts() {
     needsReply: Number(row?.needs_reply ?? 0),
     decisions: Number(row?.decisions ?? 0),
     candidates: Number(row?.candidates ?? 0),
+  };
+}
+
+export async function dashboardReviewStats() {
+  const rows = await query<{
+    accepted: string;
+    reviewed: string;
+    escalations: string;
+  }>(
+    `select
+       count(*) filter (
+         where human_decision in ('approved', 'accepted')
+           and coalesce(reason_code, '') <> 'auto_sent_candidate'
+       )::text as accepted,
+       count(*) filter (
+         where coalesce(reason_code, '') <> 'auto_sent_candidate'
+       )::text as reviewed,
+       count(*) filter (where reason_code = 'needs_human')::text as escalations
+     from mychef_inbox.decision_records
+     where workspace_id = $1`,
+    [MYCHEF_WORKSPACE],
+  );
+  const recent = await query<{
+    conversation_id: string;
+    name: string | null;
+    created_at: Date;
+  }>(
+    `select d.conversation_id,
+            ct.name,
+            d.created_at
+     from mychef_inbox.decision_records d
+     left join mychef_inbox.conversations c
+       on c.workspace_id = d.workspace_id and c.id = d.conversation_id
+     left join mychef_inbox.contacts ct
+       on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
+     where d.workspace_id = $1 and d.reason_code = 'needs_human'
+     order by d.created_at desc
+     limit 5`,
+    [MYCHEF_WORKSPACE],
+  );
+  const row = rows[0];
+  return {
+    accepted: Number(row?.accepted ?? 0),
+    reviewed: Number(row?.reviewed ?? 0),
+    escalations: Number(row?.escalations ?? 0),
+    recentEscalations: recent,
   };
 }
 
@@ -300,7 +354,7 @@ async function rankKnowledge(inbound: string) {
   const docs = await query<{ id: string; title: string; content: string }>(
     `select id, title, content
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source is distinct from 'ledger-rule'`,
+     where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')`,
     [MYCHEF_WORKSPACE],
   );
   return docs
@@ -349,7 +403,16 @@ export async function draftForConversation(conversationId: string, authorId: str
       JSON.stringify(draft.sourceRefs),
     ],
   );
-  return { ok: true as const, draft };
+  const auto = await recordAutoSendCandidateIfEnabled(appPool, {
+    conversationId,
+    projectId: conversation.project_id || MYCHEF_WORKSPACE,
+    authorId,
+    draftText: draft.draftText,
+    confidence: draft.confidence,
+    escalate: draft.escalate,
+    sourceRefs: draft.sourceRefs,
+  }).catch(() => ({ fired: false }));
+  return { ok: true as const, draft, autoSendCandidate: auto.fired };
 }
 
 function neonDecision(decision: HumanDecision): "approved" | "edited" | "rejected" {
@@ -457,7 +520,7 @@ export async function listStoredKnowledge(): Promise<StoredKnowledge[]> {
   }>(
     `select id, title, content, project_id
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source is distinct from 'ledger-rule'
+     where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')
      order by title`,
     [MYCHEF_WORKSPACE],
   );
@@ -483,7 +546,7 @@ export async function listKnowledgeDrafts() {
   }>(
     `select id, title, status, project_id, source
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source is distinct from 'ledger-rule'
+     where workspace_id = $1 and source not in ('ledger-rule', 'learning-pass')
      order by status, title`,
     [MYCHEF_WORKSPACE],
   );
@@ -501,7 +564,7 @@ export async function setKnowledgeStatus(
   const updated = await query<{ id: string }>(
     `update mychef_inbox.knowledge
      set status = $3, updated_at = now(), version = version + 1
-     where workspace_id = $1 and id = $2 and source is distinct from 'ledger-rule'
+     where workspace_id = $1 and id = $2 and source not in ('ledger-rule', 'learning-pass')
      returning id`,
     [MYCHEF_WORKSPACE, id, status],
   );
@@ -542,7 +605,7 @@ export async function listRuleCandidates(): Promise<RuleRow[]> {
   return query<RuleRow>(
     `select id, title, content, status, category, updated_at
      from mychef_inbox.knowledge
-     where workspace_id = $1 and source = 'ledger-rule'
+     where workspace_id = $1 and source in ('ledger-rule', 'learning-pass')
      order by updated_at desc`,
     [MYCHEF_WORKSPACE],
   );
@@ -602,6 +665,90 @@ export async function runMychefLearning(actorId: string) {
   return { created, goodAsDrafted, decayed: decay.length };
 }
 
+export async function runLearningPass(actorId: string, db: Db = appPool) {
+  const grouped = await rows<{ reason_code: string; n: string }>(
+    db,
+    `select d.reason_code, count(*)::text as n
+     from mychef_inbox.decision_records d
+     join mychef_inbox.feedback f on f.id = d.feedback_id
+     where d.workspace_id = $1
+       and d.created_at >= now() - interval '30 days'
+       and d.reason_code <> 'auto_sent_candidate'
+     group by d.reason_code`,
+    [MYCHEF_WORKSPACE],
+  );
+  let proposed = 0;
+  let refreshed = 0;
+  let skippedGood = 0;
+  let clustered = 0;
+  for (const row of grouped) {
+    const count = Number(row.n);
+    if (row.reason_code === "good_as_drafted") {
+      skippedGood += count;
+      continue;
+    }
+    clustered += 1;
+    const proposal = statementFor(row.reason_code, count);
+    if (!proposal) continue;
+    const source = ["wrong_policy", "wrong_fact", "missing_knowledge"].includes(row.reason_code)
+      ? "learning-pass"
+      : "ledger-rule";
+    const id = `${source}:${proposal.key}`;
+    const content = `evidence: ${count}\ngroup: ${proposal.group}\nreason: ${row.reason_code}\n\n${proposal.statement}`;
+    const outcome = await proposePendingRow(db, {
+      id,
+      source,
+      title: proposal.statement,
+      content,
+      category: proposal.group,
+    });
+    if (outcome === "created") proposed += 1;
+    if (outcome === "refreshed") refreshed += 1;
+  }
+  await db.query(
+    `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+     values ($1, $2, 'learn:pass', $3)`,
+    [MYCHEF_WORKSPACE, actorId, `clustered:${clustered}:proposed:${proposed}`],
+  );
+  return { clustered, proposed, refreshed, skippedGood, sent: false as const, activated: false as const };
+}
+
+async function proposePendingRow(
+  db: Db,
+  input: {
+    id: string;
+    source: "ledger-rule" | "learning-pass";
+    title: string;
+    content: string;
+    category: string;
+  },
+) {
+  const existing = await rows<{ status: string; source: string }>(
+    db,
+    `select status, source from mychef_inbox.knowledge where workspace_id = $1 and id = $2`,
+    [MYCHEF_WORKSPACE, input.id],
+  );
+  const row = existing[0];
+  if (row && (row.status === "approved" || row.status === "retired")) return "left" as const;
+  if (row && row.source !== input.source) return "left" as const;
+  if (row) {
+    await db.query(
+      `update mychef_inbox.knowledge
+       set title = $3, content = $4, category = $5, status = 'pending', updated_at = now(), version = version + 1
+       where workspace_id = $1 and id = $2 and source = $6 and status = 'pending'`,
+      [MYCHEF_WORKSPACE, input.id, input.title, input.content, input.category, input.source],
+    );
+    return "refreshed" as const;
+  }
+  await db.query(
+    `insert into mychef_inbox.knowledge
+       (workspace_id, id, title, content, category, status, scope, source, version, project_id, area_id, created_at, updated_at)
+     values ($1, $2, $3, $4, $5, 'pending', 'business', $6, 1, 'mychef', 'general', now(), now())`,
+    [MYCHEF_WORKSPACE, input.id, input.title, input.content, input.category, input.source],
+  );
+  return "created" as const;
+}
+
 function statementFor(reason: string, count: number): { key: string; group: string; statement: string } | null {
   if (["wrong_policy", "wrong_fact", "missing_knowledge"].includes(reason)) {
     return {
@@ -645,7 +792,7 @@ export async function setMychefRuleStatus(
 ) {
   const rows = await query<{ title: string; content: string; status: string }>(
     `select title, content, status from mychef_inbox.knowledge
-     where workspace_id = $1 and id = $2 and source = 'ledger-rule'`,
+     where workspace_id = $1 and id = $2 and source in ('ledger-rule', 'learning-pass')`,
     [MYCHEF_WORKSPACE, id],
   );
   const rule = rows[0];
@@ -728,8 +875,10 @@ export async function listMychefKeys() {
     enabled: boolean;
     config: { hint?: string; base_url?: string } | null;
     updated_at: Date;
+    verified_at: Date | null;
+    last_error: string | null;
   }>(
-    `select id, enabled, config, updated_at
+    `select id, enabled, config, updated_at, verified_at, last_error
      from mychef_inbox.integration_connections
      where workspace_id = $1 and kind = 'ai' and id = any($2::text[])
      order by id`,
@@ -742,9 +891,19 @@ export async function saveMychefKey(
   provider: Provider,
   secret: string,
   baseUrl: string | null,
+  keepBaseUrl = false,
 ) {
   const trimmed = secret.trim();
   if (trimmed.length < 8) return { ok: false as const, error: "Enter the provider key. It stays on the server." };
+  let storedBase = baseUrl;
+  if (keepBaseUrl) {
+    const existing = await query<{ config: { base_url?: string } | null }>(
+      `select config from mychef_inbox.integration_connections
+       where workspace_id = $1 and id = $2`,
+      [MYCHEF_WORKSPACE, provider],
+    );
+    storedBase = existing[0]?.config?.base_url ?? null;
+  }
   const hint = keyHint(trimmed);
   const encoded = encryptSecret(trimmed).toString("base64");
   await query(
@@ -756,13 +915,14 @@ export async function saveMychefKey(
            config = excluded.config,
            enabled = true,
            label = excluded.label,
+           last_error = null,
            updated_at = now()`,
     [
       MYCHEF_WORKSPACE,
       provider,
-      provider,
+      PROVIDER_LABELS[provider],
       encoded,
-      JSON.stringify({ hint, base_url: baseUrl }),
+      JSON.stringify({ hint, base_url: storedBase }),
     ],
   );
   return { ok: true as const, hint };
