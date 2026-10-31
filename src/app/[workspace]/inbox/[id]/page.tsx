@@ -7,6 +7,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "cn";
+import { MychefThread } from "@/app/[workspace]/inbox/thread";
+import { usesMychefInbox } from "@/db/mode";
 import { getWorkspaceAccess } from "@/lib/context";
 import { getDecision } from "@/lib/decisions";
 import { formatConfidence, formatWhen } from "@/lib/format";
@@ -23,6 +25,11 @@ export default async function DecisionPage({
   const { workspace, id } = await params;
   const access = await getWorkspaceAccess(workspace);
   if (access.status !== "ok") return null;
+  if (usesMychefInbox()) {
+    const thread = await MychefThread({ id });
+    if (!thread) notFound();
+    return thread;
+  }
   const decision = await getDecision(access.ctx.orgId, id);
   if (!decision) notFound();
   const catalog = listKnowledge().map((doc) => ({ id: doc.id, title: doc.title }));
@@ -145,12 +152,17 @@ export default async function DecisionPage({
               ))}
             </div>
           ) : canReview(access.ctx.role) ? (
+            <>
+              <a href="#review-form" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-fit")}>
+                I don’t like the way this is written.
+              </a>
             <FeedbackForm
               action={action}
               draft={decision.draftText}
               sources={decision.sourceRefs ?? []}
               catalog={catalog}
             />
+            </>
           ) : (
             <Alert>
               <AlertTitle>View only</AlertTitle>

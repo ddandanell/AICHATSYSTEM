@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { appDb } from "@/db/client";
 import { memberships, users } from "@/db/schema";
+import { usesMychefInbox } from "@/db/mode";
 import { getWorkspaceAccess } from "@/lib/context";
 import { roleLabel } from "@/lib/format";
 
@@ -21,6 +22,36 @@ export default async function TeamPage({
   const { workspace } = await params;
   const access = await getWorkspaceAccess(workspace);
   if (access.status !== "ok") return null;
+  if (usesMychefInbox()) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-2xl font-medium tracking-tight">Team</h2>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+            This Neon role cannot create a membership table. The signed-in session is the owner of myCHEF.
+          </p>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Role</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow>
+              <TableCell>{access.ctx.name ?? "—"}</TableCell>
+              <TableCell>{access.ctx.email}</TableCell>
+              <TableCell>
+                <Badge variant="secondary">{roleLabel(access.ctx.role)}</Badge>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
+    );
+  }
   const rows = await appDb
     .select({
       id: users.id,

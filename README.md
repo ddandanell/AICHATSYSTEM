@@ -4,6 +4,14 @@ Review drafted client replies and record why a reply was right or wrong. The con
 
 Each workspace is a tenant. Postgres row-level security is the boundary. Provider keys stay on the server, encrypted with AES-256-GCM. The browser only ever sees a four-character hint.
 
+## Database
+
+The console reads `DATABASE_URL` and `KEY_READER_DATABASE_URL`. Local Docker uses `inbox_app` and `inbox_key_reader`. The Neon project `mychef` is opened as `mychef_runtime`. That role cannot create schemas, tables, or extensions, and it does not own the existing tables, so the ledger is not copied into new `documents` or `chunks` tables. The console reads and writes `mychef_inbox` in place: knowledge, contacts, conversations, messages, drafts, feedback, decision records, audit log, and provider rows on `integration_connections`. Existing knowledge rows stay in `mychef_inbox.knowledge`. No source table is dropped. Put the Neon connection string only in `.env.local`. Do not commit it.
+
+`npm run db:migrate` skips `002_roles.sql` when the current user cannot create roles. `npm run verify:rls` expects the local Harbor Kitchen and Northline Catering seed. Point it at Docker, not Neon.
+
+On Neon, a signed-in session is the owner of the `mychef` workspace. The inbox is the conversations that still need a reply. Automatic sending is not on.
+
 ## Run locally
 
 Postgres runs from Docker. The app role is not a superuser and does not own the tables, so row-level security applies.
@@ -18,10 +26,12 @@ npm run dev
 
 Open [http://127.0.0.1:4317](http://127.0.0.1:4317).
 
-Seeded sessions:
+Seeded sessions on local Docker:
 
 - Maya Chen (`maya@harbor-kitchen.example`) — owner of Harbor Kitchen. Two drafts are waiting. The reviewed tab is empty.
 - Jonah Hale (`jonah@northline.example`) — owner of Northline Catering. The pending queue is empty. One edited reply is already reviewed.
+
+When the console points at Neon, the same Maya account is the owner of myCHEF. Jonah has no membership there. The myCHEF inbox starts empty; the knowledge page lists the copied documents.
 
 A new email creates a user and lands on workspace setup. Create a workspace to see an empty queue, or join a slug as a viewer. This fallback stores no password.
 

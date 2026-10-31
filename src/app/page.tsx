@@ -9,5 +9,5 @@ export default async function HomePage() {
   if (!session?.user?.id) redirect("/login");
   const workspaces = await listMyWorkspaces(session.user.id);
   if (workspaces.length === 0) redirect("/onboarding");
-  redirect(`/${workspaces[0].slug}/inbox`);
+  redirect(`/${workspaces[0].slug}/dashboard`);
 }

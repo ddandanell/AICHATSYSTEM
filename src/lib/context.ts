@@ -10,7 +10,10 @@ export async function getWorkspaceAccess(
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) redirect("/login");
-  const access = await authorizeWorkspace(userId, slug);
+  const access = await authorizeWorkspace(userId, slug, {
+    email: session?.user?.email,
+    name: session?.user?.name,
+  });
   if (access.status === "unknown") notFound();
   return access;
 }

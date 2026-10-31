@@ -16,6 +16,8 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { QueueTabs } from "@/components/queue-tabs";
+import { MychefQueue } from "@/app/[workspace]/inbox/queue";
+import { usesMychefInbox } from "@/db/mode";
 import { getWorkspaceAccess } from "@/lib/context";
 import { listDecisions } from "@/lib/decisions";
 import { excerpt, formatConfidence, formatWhen } from "@/lib/format";
@@ -33,6 +35,9 @@ export default async function InboxPage({
   const access = await getWorkspaceAccess(workspace);
   if (access.status !== "ok") return null;
   const status = query.status === "reviewed" ? "reviewed" : "pending_review";
+  if (usesMychefInbox()) {
+    return <MychefQueue slug={access.ctx.orgSlug} status={status} />;
+  }
   const rows = await listDecisions(access.ctx.orgId, status);
   const draft = draftAction.bind(null, access.ctx.orgSlug);
 

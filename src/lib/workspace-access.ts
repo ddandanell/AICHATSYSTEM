@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { appDb } from "@/db/client";
+import { usesMychefInbox } from "@/db/mode";
 import { memberships, organizations, users } from "@/db/schema";
 
 export type Role = "owner" | "admin" | "reviewer" | "viewer";
@@ -44,7 +45,23 @@ export async function findOrCreateUser(email: string, name: string | null) {
 export async function authorizeWorkspace(
   userId: string,
   slug: string,
+  profile?: { email?: string | null; name?: string | null },
 ): Promise<WorkspaceAccess> {
+  if (usesMychefInbox()) {
+    if (slug !== "mychef") return { status: "unknown" };
+    return {
+      status: "ok",
+      ctx: {
+        userId,
+        orgId: "mychef",
+        role: "owner",
+        orgSlug: "mychef",
+        orgName: "myCHEF",
+        email: profile?.email ?? "",
+        name: profile?.name ?? null,
+      },
+    };
+  }
   const orgRows = await appDb
     .select()
     .from(organizations)
@@ -85,6 +102,9 @@ export async function authorizeWorkspace(
 }
 
 export async function listMyWorkspaces(userId: string) {
+  if (usesMychefInbox()) {
+    return [{ slug: "mychef", name: "myCHEF", role: "owner" }];
+  }
   const rows = await appDb
     .select({
       slug: organizations.slug,

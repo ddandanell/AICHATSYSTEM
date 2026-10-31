@@ -1,4 +1,6 @@
 import { and, eq } from "drizzle-orm";
+import { listMychefKeys, revokeMychefKey, saveMychefKey } from "@/data/mychef-store";
+import { usesMychefInbox } from "@/db/mode";
 import { withTenant } from "@/db/tenant";
 import { providerCredentials } from "@/db/schema";
 import { encryptSecret, keyHint } from "@/lib/crypto";
@@ -26,6 +28,17 @@ const publicColumns = {
 };
 
 export async function listCredentials(orgId: string) {
+  if (usesMychefInbox()) {
+    const rows = await listMychefKeys();
+    return rows.map((row) => ({
+      id: row.id,
+      provider: row.id as Provider,
+      keyHint: row.config?.hint ?? null,
+      isActive: row.enabled,
+      createdAt: row.updated_at,
+      rotatedAt: null as Date | null,
+    }));
+  }
   return withTenant(orgId, async (tx) => {
     return tx
       .select(publicColumns)
@@ -39,6 +52,7 @@ export async function saveCredential(
   userId: string,
   provider: Provider,
   secret: string,
+  baseUrl?: string | null,
 ): Promise<{ ok: true; hint: string } | { ok: false; error: string }> {
   const trimmed = secret.trim();
   if (trimmed.length < 8) {
@@ -46,6 +60,11 @@ export async function saveCredential(
   }
   const hint = keyHint(trimmed);
   const encrypted = encryptSecret(trimmed);
+  if (usesMychefInbox()) {
+    const saved = await saveMychefKey(provider, trimmed, baseUrl ?? null);
+    dropProviderSecret(orgId, provider);
+    return saved;
+  }
   try {
     await withTenant(orgId, async (tx) => {
       await tx.insert(providerCredentials).values({
@@ -55,6 +74,7 @@ export async function saveCredential(
         keyHint: hint,
         isActive: true,
         createdBy: userId,
+        ...(baseUrl ? { baseUrl } : {}),
       });
     });
   } catch (error) {
@@ -81,6 +101,11 @@ export async function rotateCredential(
   }
   const hint = keyHint(trimmed);
   const encrypted = encryptSecret(trimmed);
+  if (usesMychefInbox()) {
+    const saved = await saveMychefKey(provider, trimmed, null);
+    dropProviderSecret(orgId, provider);
+    return saved;
+  }
   const updated = await withTenant(orgId, async (tx) => {
     return tx
       .update(providerCredentials)
@@ -109,6 +134,11 @@ export async function revokeCredential(
   orgId: string,
   provider: Provider,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (usesMychefInbox()) {
+    const revoked = await revokeMychefKey(provider);
+    dropProviderSecret(orgId, provider);
+    return revoked;
+  }
   const updated = await withTenant(orgId, async (tx) => {
     return tx
       .update(providerCredentials)

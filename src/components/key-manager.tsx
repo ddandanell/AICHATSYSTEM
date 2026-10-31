@@ -166,6 +166,15 @@ export function KeyManager({
                     </Select>
                   </Field>
                   <Field>
+                    <FieldLabel htmlFor="add-base-url">Base URL</FieldLabel>
+                    <Input
+                      id="add-base-url"
+                      name="base_url"
+                      placeholder="Vercel gateway only. DeepSeek uses its own host."
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field>
                     <FieldLabel htmlFor="add-secret">Key</FieldLabel>
                     <Input
                       id="add-secret"

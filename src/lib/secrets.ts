@@ -1,4 +1,6 @@
 import { sql } from "drizzle-orm";
+import { resolveMychefSecret } from "@/data/mychef-store";
+import { usesMychefInbox } from "@/db/mode";
 import { withKeyReader } from "@/db/tenant";
 import { asBytea, decryptSecret } from "@/lib/crypto";
 import type { Provider } from "@/lib/providers";
@@ -30,6 +32,13 @@ export async function resolveProviderSecret(
   const hit = cache.get(key);
   if (hit && hit.expires > Date.now()) return hit.secret;
   if (hit) cache.delete(key);
+
+  if (usesMychefInbox()) {
+    const stored = await resolveMychefSecret(provider);
+    if (!stored) return null;
+    cache.set(key, { secret: stored.secret, expires: Date.now() + TTL_MS });
+    return stored.secret;
+  }
 
   const secret = await withKeyReader(orgId, async (tx) => {
     const result = await tx.execute(

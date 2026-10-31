@@ -78,9 +78,18 @@ export const providerCredentials = pgTable("provider_credentials", {
     .references(() => organizations.id),
   provider: text("provider")
     .notNull()
-    .$type<"openai" | "anthropic" | "azure_openai" | "bedrock" | "google">(),
+    .$type<
+      | "openai"
+      | "anthropic"
+      | "azure_openai"
+      | "bedrock"
+      | "google"
+      | "vercel_gateway"
+      | "deepseek"
+    >(),
   encryptedKey: bytea("encrypted_key").notNull(),
   keyHint: text("key_hint"),
+  baseUrl: text("base_url"),
   isActive: boolean("is_active").notNull().default(true),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
@@ -176,7 +185,7 @@ export const rules = pgTable("rules", {
   scope: text("scope").notNull(),
   statement: text("statement").notNull(),
   priority: integer("priority").notNull().default(0),
-  exceptions: jsonb("exceptions").notNull().$type<unknown[]>().default([]),
+  exceptions: jsonb("exceptions").notNull().$type<unknown>().default([]),
   evidenceCount: integer("evidence_count").notNull().default(0),
   ownerId: uuid("owner_id").references(() => users.id),
   version: integer("version").notNull().default(1),
@@ -231,6 +240,7 @@ export const documents = pgTable(
     sourceId: text("source_id").notNull(),
     title: text("title").notNull(),
     body: text("body").notNull(),
+    scope: text("scope"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
       .defaultNow(),
@@ -265,6 +275,18 @@ export const chunks = pgTable(
     }).onDelete("cascade"),
   ],
 );
+
+export const auditEvents = pgTable("audit_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orgId: uuid("org_id")
+    .notNull()
+    .references(() => organizations.id),
+  kind: text("kind").notNull().$type<"feedback" | "rule_status">(),
+  summary: text("summary").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
+    .notNull()
+    .defaultNow(),
+});
 
 export const aiUsageLog = pgTable("ai_usage_log", {
   id: uuid("id").primaryKey().defaultRandom(),

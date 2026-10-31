@@ -39,11 +39,13 @@ export async function saveKeyAction(
   if ("error" in access) return { error: access.error };
   const provider = providerFrom(formData);
   if (!provider) return { error: "Choose a provider." };
+  const baseUrl = String(formData.get("base_url") ?? "").trim();
   const saved = await saveCredential(
     access.ctx.orgId,
     access.ctx.userId,
     provider,
     String(formData.get("secret") ?? ""),
+    baseUrl || null,
   );
   if (!saved.ok) return { error: saved.error };
   revalidatePath(`/${slug}/settings/keys`);

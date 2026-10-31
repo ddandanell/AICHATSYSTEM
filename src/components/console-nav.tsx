@@ -6,6 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "cn";
 
 const LINKS = [
+  { label: "Dashboard", href: (slug: string) => `/${slug}/dashboard` },
   { label: "Inbox", href: (slug: string) => `/${slug}/inbox` },
   { label: "Knowledge", href: (slug: string) => `/${slug}/knowledge` },
   { label: "Keys", href: (slug: string) => `/${slug}/settings/keys` },
@@ -21,10 +22,7 @@ export function ConsoleNav({ slug }: { slug: string }) {
     <nav className="flex gap-1 overflow-x-auto pb-1">
       {LINKS.map((link) => {
         const href = link.href(slug);
-        const active =
-          link.label === "Inbox"
-            ? pathname.startsWith(`/${slug}/inbox`)
-            : pathname === href || pathname.startsWith(`${href}/`);
+        const active = pathname === href || pathname.startsWith(`${href}/`);
         return (
           <Link
             key={link.label}

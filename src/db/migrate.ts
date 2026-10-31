@@ -30,6 +30,17 @@ for (const file of files) {
     console.log(`skip ${file}`);
     continue;
   }
+  if (file === "002_roles.sql") {
+    const role = await client.query<{ rolcreaterole: boolean; rolsuper: boolean }>(
+      "select rolcreaterole, rolsuper from pg_roles where rolname = current_user",
+    );
+    const current = role.rows[0];
+    if (!current?.rolcreaterole && !current?.rolsuper) {
+      await client.query("insert into schema_migrations (id) values ($1)", [file]);
+      console.log("skip 002_roles.sql (current user cannot create roles)");
+      continue;
+    }
+  }
   const sqlText = readFileSync(join(dir, file), "utf8");
   await client.query("begin");
   try {

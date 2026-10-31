@@ -8,17 +8,20 @@ function required(name: string): string {
   return value;
 }
 
-function assertUser(url: string, expectedUser: string) {
-  const user = new URL(url).username;
-  if (user !== expectedUser) {
+const APP_ROLES = new Set(["inbox_app", "mychef_runtime"]);
+const KEY_ROLES = new Set(["inbox_key_reader", "mychef_runtime"]);
+
+function assertUser(url: string, allowed: Set<string>) {
+  const user = decodeURIComponent(new URL(url).username);
+  if (!allowed.has(user)) {
     throw new Error(
-      `Refusing database user "${user}". Expected "${expectedUser}". The request path must not use the migration superuser.`,
+      `Refusing database user "${user}". The request path must use an application role, not a migration superuser.`,
     );
   }
 }
 
-function pool(url: string, expectedUser: string) {
-  assertUser(url, expectedUser);
+function pool(url: string, allowed: Set<string>) {
+  assertUser(url, allowed);
   return new Pool({ connectionString: url, max: 8 });
 }
 
@@ -28,9 +31,9 @@ const globalForDb = globalThis as unknown as {
 };
 
 export const appPool =
-  globalForDb.appPool ?? pool(required("DATABASE_URL"), "inbox_app");
+  globalForDb.appPool ?? pool(required("DATABASE_URL"), APP_ROLES);
 export const keyPool =
-  globalForDb.keyPool ?? pool(required("KEY_READER_DATABASE_URL"), "inbox_key_reader");
+  globalForDb.keyPool ?? pool(required("KEY_READER_DATABASE_URL"), KEY_ROLES);
 
 if (process.env.NODE_ENV !== "production") {
   globalForDb.appPool = appPool;

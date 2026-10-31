@@ -48,6 +48,7 @@ export function FeedbackForm({
 
   return (
     <form
+      id="review-form"
       action={formAction}
       className="flex flex-col gap-5"
       onKeyDown={(event) => {

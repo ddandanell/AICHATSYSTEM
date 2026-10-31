@@ -1,4 +1,5 @@
 import { KeyManager } from "@/components/key-manager";
+import { NEON_AUTH_URL, NEON_JWKS_URL } from "@/lib/neon-auth";
 import { getWorkspaceAccess } from "@/lib/context";
 import { listCredentials } from "@/lib/credentials";
 import type { Provider } from "@/lib/providers";
@@ -27,7 +28,12 @@ export default async function KeysPage({
         <h2 className="text-2xl font-medium tracking-tight">Provider keys</h2>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           Keys are encrypted with the server master key and decrypted only for
-          a request. The page shows a four-character hint after save.
+          a request. The page shows a four-character hint after save. Vercel AI
+          Gateway defaults to https://ai-gateway.vercel.sh/v1. DeepSeek uses
+          https://api.deepseek.com. Azure and Bedrock tests do not send the key.
+        </p>
+        <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+          Neon Auth is the identity endpoint {NEON_AUTH_URL}. JWKS is {NEON_JWKS_URL}. Neither is a database connection string.
         </p>
       </div>
       <KeyManager

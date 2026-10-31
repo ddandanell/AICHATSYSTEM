@@ -40,4 +40,10 @@ create policy tenant_isolation_chunks on chunks
   using (org_id = nullif(current_setting('app.current_org_id', true), '')::uuid)
   with check (org_id = nullif(current_setting('app.current_org_id', true), '')::uuid);
 
-grant select, insert, update, delete on documents, chunks to inbox_app;
+do $$
+begin
+  if exists (select 1 from pg_roles where rolname = 'inbox_app') then
+    grant select, insert, update, delete on documents, chunks to inbox_app;
+  end if;
+end
+$$;

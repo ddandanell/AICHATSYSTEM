@@ -1,6 +1,8 @@
+import { markMychefKeyChecked, resolveMychefSecret } from "@/data/mychef-store";
+import { usesMychefInbox } from "@/db/mode";
 import { withTenant } from "@/db/tenant";
 import { aiUsageLog } from "@/db/schema";
-import type { Provider } from "@/lib/providers";
+import { DEEPSEEK_BASE, VERCEL_GATEWAY_DEFAULT, type Provider } from "@/lib/providers";
 import { resolveProviderSecret } from "@/lib/secrets";
 
 const NO_KEY = "No active key stored for this provider.";
@@ -12,7 +14,15 @@ function redact(message: string, secret: string): string {
   return message.split(secret).join("[redacted]");
 }
 
-async function probe(provider: Provider, secret: string): Promise<void> {
+function gatewayBase(provider: Provider, baseUrl: string | null): string {
+  if (provider === "vercel_gateway") {
+    return (baseUrl || VERCEL_GATEWAY_DEFAULT).replace(/\/$/, "");
+  }
+  if (provider === "deepseek") return DEEPSEEK_BASE;
+  return "";
+}
+
+async function probe(provider: Provider, secret: string, baseUrl: string | null): Promise<void> {
   if (provider === "azure_openai") {
     throw new SafeProviderError(
       "Azure OpenAI needs an endpoint, which this slice does not store. The key was not sent.",
@@ -33,6 +43,9 @@ async function probe(provider: Provider, secret: string): Promise<void> {
     url = "https://api.anthropic.com/v1/models";
     headers.set("x-api-key", secret);
     headers.set("anthropic-version", "2023-06-01");
+  } else if (provider === "vercel_gateway" || provider === "deepseek") {
+    url = `${gatewayBase(provider, baseUrl)}/models`;
+    headers.set("Authorization", `Bearer ${secret}`);
   } else {
     url = "https://generativelanguage.googleapis.com/v1beta/models";
     headers.set("x-goog-api-key", secret);
@@ -61,17 +74,25 @@ export async function testProviderConnection(
   orgId: string,
   provider: Provider,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const secret = await resolveProviderSecret(orgId, provider);
+  const stored = usesMychefInbox() ? await resolveMychefSecret(provider) : null;
+  const secret = stored?.secret ?? (await resolveProviderSecret(orgId, provider));
   if (!secret) return { ok: false, error: NO_KEY };
 
   try {
-    await probe(provider, secret);
+    await probe(provider, secret, stored?.baseUrl ?? null);
   } catch (error) {
     const message =
       error instanceof SafeProviderError
         ? error.message
         : "The provider call failed.";
-    return { ok: false, error: redact(message, secret) };
+    const safe = redact(message, secret);
+    if (usesMychefInbox()) await markMychefKeyChecked(provider, safe);
+    return { ok: false, error: safe };
+  }
+
+  if (usesMychefInbox()) {
+    await markMychefKeyChecked(provider, null);
+    return { ok: true };
   }
 
   await withTenant(orgId, async (tx) => {

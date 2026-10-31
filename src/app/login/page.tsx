@@ -26,12 +26,12 @@ const SEEDED = [
   {
     email: "maya@harbor-kitchen.example",
     name: "Maya Chen",
-    note: "Harbor Kitchen only",
+    note: "myCHEF",
   },
   {
     email: "jonah@northline.example",
     name: "Jonah Hale",
-    note: "Northline Catering only",
+    note: "No myCHEF membership",
   },
 ];
 

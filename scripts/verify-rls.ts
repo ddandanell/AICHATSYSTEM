@@ -66,6 +66,10 @@ async function removeVerifyDrafts() {
 }
 
 async function main() {
+const appUser = decodeURIComponent(new URL(process.env.DATABASE_URL ?? "postgres://invalid").username);
+if (appUser === "mychef_runtime") {
+  throw new Error("verify:rls expects the local Docker seed. Refusing to run as mychef_runtime.");
+}
 await removeVerifyDrafts();
 const roundtrip = "sk-test-harbor-key-9f3a";
 const encrypted = encryptSecret(roundtrip);
