@@ -8,6 +8,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangleIcon,
@@ -288,7 +289,7 @@ export function DeskReview({
             size="sm"
             variant="ghost"
             className="ml-auto lg:hidden"
-            render={<a href={`/${slug}/inbox`} />}
+            render={<Link href={`/${slug}/inbox`} />}
           >
             Queue
           </Button>
@@ -394,7 +395,7 @@ export function DeskReview({
                     </div>
                   ) : null}
                 </CardContent>
-                <CardFooter className="sticky bottom-0 flex flex-wrap gap-2 border-t border-border/60 bg-card">
+                <CardFooter className="sticky bottom-0 flex flex-wrap gap-2 bg-card">
                   <Button
                     type="button"
                     disabled={pending}
