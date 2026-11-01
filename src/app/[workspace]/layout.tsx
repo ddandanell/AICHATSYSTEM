@@ -55,7 +55,7 @@ export default async function WorkspaceLayout({
   const workspaces = await listMyWorkspaces(ctx.userId);
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
       <header className="shrink-0 border-b">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-3 md:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">

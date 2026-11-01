@@ -280,44 +280,46 @@ export function DeskReview({
 
         <TimeStrip metrics={metrics} />
 
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="flex flex-col gap-4 px-4 py-4 lg:px-6">
-            {messageGroups.map((group) => (
-              <div key={group.key} className="flex flex-col gap-4">
-                <div className="flex items-center gap-4">
-                  <Separator className="flex-1" />
-                  <span className="text-xs text-muted-foreground">{group.label}</span>
-                  <Separator className="flex-1" />
-                </div>
-                {group.items.map((message) => {
-                  const inbound = message.direction === "inbound";
-                  return (
-                    <div
-                      key={message.id}
-                      className={cn("flex", inbound ? "justify-start" : "justify-end")}
-                    >
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
+            <div className="flex flex-col gap-4 px-4 py-4 lg:px-6">
+              {messageGroups.map((group) => (
+                <div key={group.key} className="flex flex-col gap-4">
+                  <div className="flex items-center gap-4">
+                    <Separator className="flex-1" />
+                    <span className="text-xs text-muted-foreground">{group.label}</span>
+                    <Separator className="flex-1" />
+                  </div>
+                  {group.items.map((message) => {
+                    const inbound = message.direction === "inbound";
+                    return (
                       <div
-                        className={cn(
-                          "flex max-w-[92%] flex-col gap-1 rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
-                          inbound
-                            ? "bg-muted text-foreground"
-                            : "border border-border bg-background",
-                        )}
+                        key={message.id}
+                        className={cn("flex", inbound ? "justify-start" : "justify-end")}
                       >
-                        <span className="text-xs text-muted-foreground">
-                          {inbound ? "Guest" : "myCHEF"} · {formatWhen(message.created_at)}
-                        </span>
-                        <p>{message.body}</p>
+                        <div
+                          className={cn(
+                            "flex max-w-[92%] flex-col gap-1 rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
+                            inbound
+                              ? "bg-muted text-foreground"
+                              : "border border-border bg-background",
+                          )}
+                        >
+                          <span className="text-xs text-muted-foreground">
+                            {inbound ? "Guest" : "myCHEF"} · {formatWhen(message.created_at)}
+                          </span>
+                          <p>{message.body}</p>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
 
-        <div className="sticky bottom-0 z-10 border-t border-border bg-background/95 p-4 backdrop-blur lg:p-6">
+        <div className="z-10 shrink-0 border-t border-border bg-background/95 p-4 backdrop-blur lg:p-6">
           <div className="flex flex-col gap-4">
             <Alert>
               <AlertTriangleIcon />
@@ -368,8 +370,8 @@ export function DeskReview({
                         );
                       }
                     }}
-                    rows={6}
-                    className="min-h-32 bg-background"
+                    rows={4}
+                    className="min-h-24 bg-background"
                     aria-label="AI suggested reply"
                   />
                   {dirty ? (
@@ -379,7 +381,7 @@ export function DeskReview({
                     </div>
                   ) : null}
                 </CardContent>
-                <CardFooter className="sticky bottom-0 flex flex-wrap gap-2 bg-card">
+                <CardFooter className="flex flex-wrap gap-2 bg-card">
                   <Button
                     type="button"
                     disabled={pending}

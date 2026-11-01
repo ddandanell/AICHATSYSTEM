@@ -111,70 +111,72 @@ export function QueuePane({
         </div>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
-        <ul className="flex flex-col">
-          {rows.length === 0 ? (
-            <li className="px-4 py-8 text-sm text-muted-foreground">
-              Nothing in this filter.
-            </li>
-          ) : (
-            rows.map((row) => {
-              const active = row.id === activeId;
-              const href =
-                row.kind === "decision"
-                  ? `/${slug}/inbox/${row.id}?filter=${filter}${search ? `&q=${encodeURIComponent(search)}` : ""}`
-                  : hrefFor({ id: row.id });
-              return (
-                <li key={row.id}>
-                  <Link
-                    href={href}
-                    data-desk-id={row.id}
-                    className={cn(
-                      "flex gap-3 border-b border-border/60 px-4 py-4 transition-colors focus-visible:bg-background focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
-                      active
-                        ? "border-l-2 border-l-primary bg-background"
-                        : "border-l-2 border-l-transparent hover:bg-background/70",
-                    )}
-                  >
-                    <Avatar size="sm" className="mt-0.5">
-                      <AvatarFallback>{initials(row.name)}</AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <p
-                          className={cn(
-                            "truncate text-sm",
-                            row.unread ? "font-semibold" : "font-medium",
-                          )}
-                        >
-                          {row.name ?? "Contact"}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <ScrollArea className="h-full">
+          <ul className="flex flex-col">
+            {rows.length === 0 ? (
+              <li className="px-4 py-8 text-sm text-muted-foreground">
+                Nothing in this filter.
+              </li>
+            ) : (
+              rows.map((row) => {
+                const active = row.id === activeId;
+                const href =
+                  row.kind === "decision"
+                    ? `/${slug}/inbox/${row.id}?filter=${filter}${search ? `&q=${encodeURIComponent(search)}` : ""}`
+                    : hrefFor({ id: row.id });
+                return (
+                  <li key={row.id}>
+                    <Link
+                      href={href}
+                      data-desk-id={row.id}
+                      className={cn(
+                        "flex gap-3 border-b border-border/60 px-4 py-4 transition-colors focus-visible:bg-background focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none",
+                        active
+                          ? "border-l-2 border-l-primary bg-background"
+                          : "border-l-2 border-l-transparent hover:bg-background/70",
+                      )}
+                    >
+                      <Avatar size="sm" className="mt-0.5">
+                        <AvatarFallback>{initials(row.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p
+                            className={cn(
+                              "truncate text-sm",
+                              row.unread ? "font-semibold" : "font-medium",
+                            )}
+                          >
+                            {row.name ?? "Contact"}
+                          </p>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <ConfidenceDot confidence={row.confidence} />
+                            <span className="text-xs text-muted-foreground">
+                              {formatWhen(row.when)}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+                          {excerpt(row.snippet || "No inbound text", 90)}
                         </p>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <ConfidenceDot confidence={row.confidence} />
-                          <span className="text-xs text-muted-foreground">
-                            {formatWhen(row.when)}
-                          </span>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="text-[10px]">
+                            {statusLabel(row.filterBucket)}
+                          </Badge>
+                          {row.categories.map((id) => (
+                            <CategoryBadge key={id} id={id} />
+                          ))}
                         </div>
                       </div>
-                      <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-                        {excerpt(row.snippet || "No inbound text", 90)}
-                      </p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Badge variant="outline" className="text-[10px]">
-                          {statusLabel(row.filterBucket)}
-                        </Badge>
-                        {row.categories.map((id) => (
-                          <CategoryBadge key={id} id={id} />
-                        ))}
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              );
-            })
-          )}
-        </ul>
-      </ScrollArea>
+                    </Link>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </ScrollArea>
+      </div>
 
       {pages > 1 ? (
         <>
