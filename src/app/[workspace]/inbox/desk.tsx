@@ -1,7 +1,9 @@
 /**
  * Server composer for the myCHEF three-pane desk.
- * Purpose: load queue (pane 1) and selected conversation or empty workspace.
- * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
+ * Purpose: load queue + open conversation. IMC-33: ensure draft + timing metrics.
+ * Pane shell styling owned by inbox-design-system; this wires feature data only.
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/contact-response-desk.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
  *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
  */
 import Link from "next/link";
@@ -10,16 +12,20 @@ import { DeskShell } from "@/components/inbox/desk-shell";
 import { QueuePane } from "@/components/inbox/queue-pane";
 import { buttonVariants } from "@/components/ui/button";
 import {
+  ensureDraftForConversation,
   getConversation,
   getRecordedDecision,
+  getThreadTimingForConversation,
   listDeskQueue,
   listStoredKnowledge,
   type DeskFilter,
 } from "@/data/mychef-store";
 import { outcomeAction } from "@/app/[workspace]/inbox/mychef-actions";
 import { Badge } from "@/components/ui/badge";
+import { getWorkspaceAccess } from "@/lib/context";
 import { OUTCOMES, decisionLabel, reasonLabel } from "@/lib/reason-codes";
 import { Button } from "@/components/ui/button";
+import { canReview } from "@/lib/workspace-access";
 import { cn } from "cn";
 
 function parseFilter(value: string | undefined): DeskFilter {
@@ -117,15 +123,36 @@ export async function MychefDesk({
         </article>
       );
     } else {
-      const conversation = await getConversation(activeId);
+      const access = await getWorkspaceAccess(slug);
+      let conversation = await getConversation(activeId);
+      let draftError: string | null = null;
+      if (
+        conversation &&
+        !conversation.draft &&
+        !conversation.decided &&
+        access.status === "ok" &&
+        canReview(access.ctx.role)
+      ) {
+        const ensured = await ensureDraftForConversation(
+          activeId,
+          access.ctx.email || access.ctx.userId,
+        );
+        if (!ensured.ok) draftError = ensured.error;
+        conversation = (await getConversation(activeId)) ?? conversation;
+      }
       if (conversation) {
-        const knowledge = await listStoredKnowledge();
+        const [knowledge, timing] = await Promise.all([
+          listStoredKnowledge(),
+          getThreadTimingForConversation(activeId),
+        ]);
         const titles = Object.fromEntries(knowledge.map((doc) => [doc.id, doc.title]));
         workspace = (
           <DeskReview
             slug={slug}
             nextId={nextId}
             knowledgeTitles={titles}
+            timing={timing}
+            draftError={draftError}
             conversation={{
               id: conversation.id,
               contact_name: conversation.contact_name,
@@ -148,6 +175,7 @@ export async function MychefDesk({
                     confidence: conversation.draft.confidence,
                     why: conversation.draft.why,
                     whyNot: conversation.draft.whyNot,
+                    escalate: conversation.draft.escalate,
                   }
                 : null,
             }}

@@ -21,6 +21,11 @@ export function isChannelKind(value: string): value is ChannelKind {
 }
 
 export function channelLabel(value: string | null | undefined): string {
-  const hit = CHANNEL_KINDS.find((channel) => channel.id === value);
-  return hit?.label ?? value ?? "Channel";
+  if (!value) return "Channel";
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "whatsapp" || normalized === "whatsapp_business") {
+    return "WhatsApp Business";
+  }
+  const hit = CHANNEL_KINDS.find((channel) => channel.id === normalized);
+  return hit?.label ?? value;
 }

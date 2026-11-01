@@ -1,9 +1,9 @@
 /**
- * Panes 2–3 of the operations desk: thread + AI draft + Client Info / AI Brain.
- * Purpose: approve in under 3s; on edit, switch Brain to Why feedback; tag change
- * reloads knowledge and regenerates the draft. Nothing is sent.
- * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
- *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/cbls-architecture.md
+ * Panes 2–3 workbench: thread + AI draft + Client Info / AI Brain.
+ * IMC-33 slots: TimeStrip, always-on suggestion, How it came to this, correct→learn.
+ * Pane shell widths/restyle owned by inbox-design-system — keep feature hooks only.
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/contact-response-desk.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
  *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
  */
 "use client";
@@ -17,15 +17,18 @@ import {
 } from "@/app/[workspace]/inbox/mychef-actions";
 import { CategoryBadge } from "@/components/inbox/category-badge";
 import { DiffText } from "@/components/inbox/diff-text";
+import { TimeStrip } from "@/components/inbox/time-strip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { CategoryTagId } from "@/lib/contact-tags";
 import { channelLabel } from "@/lib/channels";
 import { formatConfidence, formatWhen } from "@/lib/format";
 import { REASON_CODES } from "@/lib/reason-codes";
+import type { ThreadTiming } from "@/lib/thread-timing";
 import { cn } from "cn";
 
 export type DeskConversation = {
@@ -48,6 +51,7 @@ export type DeskConversation = {
     confidence: number | null;
     why: string;
     whyNot: string;
+    escalate?: boolean;
   } | null;
 };
 
@@ -56,11 +60,15 @@ export function DeskReview({
   conversation,
   nextId,
   knowledgeTitles,
+  timing,
+  draftError,
 }: {
   slug: string;
   conversation: DeskConversation;
   nextId: string | null;
   knowledgeTitles: Record<string, string>;
+  timing: ThreadTiming | null;
+  draftError?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -194,6 +202,16 @@ export function DeskReview({
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  function openHowItCame() {
+    setBrainTab("brain");
+  }
+
+  function startCorrection() {
+    setEditing(true);
+    setBrainTab("brain");
+    if (reasonCode === "good_as_drafted") setReasonCode("too_casual");
+  }
+
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(16rem,0.9fr)]">
       <section className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
@@ -205,6 +223,7 @@ export function DeskReview({
             <CategoryBadge key={id} id={id} />
           ))}
         </header>
+        {timing ? <TimeStrip timing={timing} /> : null}
         <ol className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 py-4">
           {conversation.messages.map((message) => {
             const inbound = message.direction === "inbound";
@@ -218,7 +237,7 @@ export function DeskReview({
                     : "self-end border bg-background",
                 )}
               >
-                <p className="mb-1 text-[11px] text-muted-foreground">
+                <p className="mb-1 text-xs text-muted-foreground">
                   {inbound ? "Customer" : "myCHEF"} · {formatWhen(message.created_at)}
                 </p>
                 {message.body}
@@ -226,57 +245,67 @@ export function DeskReview({
             );
           })}
         </ol>
-        <div className="border-t bg-background/95 px-4 py-3 backdrop-blur">
+        <div className="sticky bottom-0 border-t border-border bg-background/95 px-4 py-3 backdrop-blur">
           <Alert className="mb-3">
             <AlertTitle>Sending is not connected</AlertTitle>
             <AlertDescription>
-              Approve records the decision in the ledger. No channel (GHL or WhatsApp) sends from this desk yet.
+              Approve records the decision in the ledger. No channel sends from this desk yet.
             </AlertDescription>
           </Alert>
+          {draftError ? (
+            <Alert variant="destructive" className="mb-3">
+              <AlertTitle>Draft could not be generated</AlertTitle>
+              <AlertDescription>{draftError}</AlertDescription>
+            </Alert>
+          ) : null}
           {conversation.draft ? (
-            <div className="flex flex-col gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium">
-                  AI Suggested Reply
+            <Card className="gap-0 border-primary/20 py-0 ring-1 ring-primary/10">
+              <CardHeader className="border-b border-border/60 [.border-b]:pb-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle className="text-sm">AI suggested reply</CardTitle>
                   {conversation.draft.confidence != null ? (
-                    <span className="ml-2 text-muted-foreground">
-                      (Confidence: {formatConfidence(conversation.draft.confidence)})
-                    </span>
+                    <Badge variant="secondary">
+                      {formatConfidence(conversation.draft.confidence)} confidence
+                    </Badge>
                   ) : null}
-                </p>
-                {conversation.draft.sources[0] ? (
-                  <Badge variant="outline">
-                    Based on {knowledgeTitles[conversation.draft.sources[0].id] ?? conversation.draft.sources[0].title}
-                  </Badge>
-                ) : null}
-              </div>
-              <Textarea
-                value={draftText}
-                onChange={(event) => {
-                  setDraftText(event.target.value);
-                  setEditing(true);
-                  if (event.target.value.trim() !== conversation.draft?.body.trim()) {
-                    setReasonCode((prev) => (prev === "good_as_drafted" ? "too_casual" : prev));
-                  }
-                }}
-                rows={7}
-                className={cn(
-                  "min-h-36 bg-background transition-[box-shadow,border-color]",
-                  editing || dirty
-                    ? "border-sky-500 shadow-[0_0_0_1px_rgba(14,165,233,0.35)]"
-                    : "border-border",
-                )}
-              />
-              {dirty ? (
-                <div className="rounded-md border bg-muted/40 px-3 py-2">
-                  <p className="mb-1 text-xs font-medium text-muted-foreground">Diff before record</p>
-                  <DiffText original={conversation.draft.body} edited={draftText} />
+                  {conversation.draft.escalate ? <Badge variant="outline">Escalate flagged</Badge> : null}
+                  {conversation.draft.sources[0] ? (
+                    <Badge variant="outline">
+                      Based on{" "}
+                      {knowledgeTitles[conversation.draft.sources[0].id] ??
+                        conversation.draft.sources[0].title}
+                    </Badge>
+                  ) : null}
                 </div>
-              ) : null}
-              <div className="sticky bottom-0 flex flex-wrap gap-2 bg-background/95 py-1">
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3 py-3">
+                <Textarea
+                  value={draftText}
+                  onChange={(event) => {
+                    setDraftText(event.target.value);
+                    setEditing(true);
+                    setBrainTab("brain");
+                    if (event.target.value.trim() !== conversation.draft?.body.trim()) {
+                      setReasonCode((prev) => (prev === "good_as_drafted" ? "too_casual" : prev));
+                    }
+                  }}
+                  rows={7}
+                  className={cn(
+                    "min-h-36 bg-background",
+                    editing || dirty ? "border-primary ring-1 ring-primary/20" : "border-border",
+                  )}
+                />
+                {dirty ? (
+                  <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">Diff before record</p>
+                    <DiffText original={conversation.draft.body} edited={draftText} />
+                  </div>
+                ) : null}
+              </CardContent>
+              <CardFooter className="flex flex-wrap gap-2">
                 <Button type="button" disabled={pending} onClick={() => submit(dirty ? "edited" : "accepted")}>
                   {pending ? <Spinner data-icon="inline-start" /> : null}
-                  Approve &amp; Send
+                  Approve
                 </Button>
                 <Button type="button" variant="outline" disabled={pending} onClick={regenerate}>
                   Regenerate
@@ -292,16 +321,30 @@ export function DeskReview({
                     submit("escalated");
                   }}
                 >
-                  Escalate to Human
+                  Escalate
+                </Button>
+                <Button type="button" variant="outline" onClick={openHowItCame}>
+                  How it came to this
+                </Button>
+                <Button type="button" variant="ghost" onClick={startCorrection}>
+                  Suggest how it should be
                 </Button>
                 <p className="self-center text-xs text-muted-foreground">A approve · E edit · ⌘ Enter</p>
-              </div>
-            </div>
+              </CardFooter>
+            </Card>
           ) : (
-            <Button type="button" disabled={pending} onClick={regenerate}>
-              {pending ? <Spinner data-icon="inline-start" /> : null}
-              Draft a reply
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Alert>
+                <AlertTitle>No AI suggestion yet</AlertTitle>
+                <AlertDescription>
+                  Generation failed or is still empty. Regenerate to load a draft — the middle pane must not stay blank.
+                </AlertDescription>
+              </Alert>
+              <Button type="button" disabled={pending} onClick={regenerate} className="w-fit">
+                {pending ? <Spinner data-icon="inline-start" /> : null}
+                Regenerate
+              </Button>
+            </div>
           )}
           {error ? (
             <p className="mt-2 text-sm text-destructive" role="alert">
@@ -331,7 +374,7 @@ export function DeskReview({
             )}
             onClick={() => setBrainTab("brain")}
           >
-            AI Brain
+            Why
           </button>
         </div>
         {brainTab === "client" ? (
@@ -387,7 +430,13 @@ export function DeskReview({
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
             <div className="flex flex-col gap-4 text-sm">
               <div>
-                <h3 className="mb-2 font-medium">Sources used</h3>
+                <h3 className="mb-2 font-medium">How it came to this</h3>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Sources and reasoning for the current AI suggestion. Nothing is sent from here.
+                </p>
+                <h4 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Sources used
+                </h4>
                 {(conversation.draft?.sources.length ?? 0) === 0 ? (
                   <p className="text-muted-foreground">No sources cited yet.</p>
                 ) : (
@@ -396,14 +445,14 @@ export function DeskReview({
                       <li key={source.id}>
                         <button
                           type="button"
-                          className="text-left text-sky-800 underline-offset-2 hover:underline"
+                          className="text-left text-foreground underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
                           onClick={() => setSourceOpen((prev) => (prev === source.id ? null : source.id))}
                         >
                           {knowledgeTitles[source.id] ?? source.title}
                         </button>
                         {sourceOpen === source.id ? (
-                          <p className="mt-1 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground">
-                            Open the Knowledge page for the full rule. Id: {source.id}
+                          <p className="mt-1 rounded-md border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
+                            Full rule lives on Knowledge. Id: {source.id}
                           </p>
                         ) : null}
                       </li>
@@ -412,16 +461,23 @@ export function DeskReview({
                 )}
               </div>
               <div>
-                <h3 className="mb-2 font-medium">Reasoning</h3>
+                <h4 className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Reasoning
+                </h4>
                 <p className="whitespace-pre-wrap text-muted-foreground">
                   {conversation.draft?.why || "Draft a reply to see why the model chose this text."}
                 </p>
+                {conversation.draft?.whyNot ? (
+                  <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">
+                    Why not: {conversation.draft.whyNot}
+                  </p>
+                ) : null}
               </div>
               {editing || dirty ? (
-                <div className="flex flex-col gap-3 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
-                  <h3 className="font-medium">Why this edit?</h3>
+                <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                  <h3 className="font-medium">Correct → learn</h3>
                   <p className="text-xs text-muted-foreground">
-                    Required when you change the draft so learning can propose a situational case.
+                    Save with Remember to queue a pending situational case. Learning Queue approves later. Not auto-activated.
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {REASON_CODES.filter((item) => item.code !== "good_as_drafted").map((item) => (

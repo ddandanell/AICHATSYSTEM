@@ -63,15 +63,17 @@ Positions and playbooks under `knowledge/` are ingested into `documents` and `ch
 
 ## Inbox desk (myCHEF)
 
-On Neon (`mychef_runtime`), `/mychef/inbox` is a full-height **three-pane operations desk** (see agent-store `docs/inbox-ux.md` and `docs/handoff.md`):
+On Neon (`mychef_runtime`), `/mychef/inbox` is a full-height **three-pane operations desk** (see agent-store `docs/inbox-ux.md`, `docs/contact-response-desk.md`, `docs/inbox-design-system.md`, `docs/handoff.md`):
 
-1. **Queue** — search; filters All / Needs Review / Auto-Sent / Escalated; cards with name, snippet, time, category badges (Private Chef / Catering / VIP), confidence dot.
-2. **Workspace** — chat history, editable AI draft (blue border while editing), Approve & Send / Regenerate / Escalate. Approve writes the ledger only; **sending is not connected** (no GHL or WhatsApp send).
-3. **Context** — Client Info (phone/email/address/tags; saving tags regenerates the draft) and AI Brain (sources, reasoning, edit feedback + “Remember this for next time” situational pending row).
+1. **Queue** — search; filters Needs Review / Escalated / Auto-Sent / All; cards with name, snippet, time, category badges, confidence dot.
+2. **Workspace (IMC-33)** — time strip (Started, Waiting, Your/Guest avg reply, Last activity), always-on AI suggestion card (auto-drafts on open), How it came to this → Why pane, Correct→learn (edit + remember → pending `situational` knowledge). Approve writes the ledger only; **sending is not connected**.
+3. **Context** — Client Info (tags re-draft) and Why / AI Brain (sources, reasoning, feedback).
+
+Pane shell restyle (strict shadcn widths/tokens) may land from `cursor/inbox-design-system-1ec3`; IMC-33 feature slots stay on `cursor/inbox-three-pane-ui`.
 
 Shortcuts: `J`/`K` queue, `A` approve, `E` edit, `⌘`/`Ctrl`+Enter submit. Mobile stacks list → detail; not three columns.
 
-Channel kinds are reserved in `src/lib/channels.ts` (`ghl`, `whatsapp_business` planned, `manual`). WhatsApp Business is not built in this slice.
+Channel kinds are reserved in `src/lib/channels.ts` (`ghl`, `whatsapp_business` planned, `manual`). WhatsApp Business send is not built.
 
 Local Docker Harbor/Northline tenants still use the older card queue and paste-to-draft flow.
 

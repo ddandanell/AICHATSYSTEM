@@ -24,6 +24,7 @@ import type { Provider } from "@/lib/providers";
 import { PROVIDERS } from "@/lib/providers";
 import type { HumanDecision, Outcome } from "@/lib/reason-codes";
 import type { SourceRef } from "@/db/schema";
+import { computeThreadTiming, type ThreadTiming } from "@/lib/thread-timing";
 
 export const MYCHEF_WORKSPACE = "mychef";
 
@@ -213,6 +214,7 @@ export type DraftMeta = {
   confidence: number | null;
   why: string;
   whyNot: string;
+  escalate: boolean;
 };
 
 function normalizeDraftMeta(raw: unknown): DraftMeta {
@@ -222,6 +224,7 @@ function normalizeDraftMeta(raw: unknown): DraftMeta {
       confidence: null,
       why: "",
       whyNot: "",
+      escalate: false,
     };
   }
   if (raw && typeof raw === "object") {
@@ -230,15 +233,17 @@ function normalizeDraftMeta(raw: unknown): DraftMeta {
       confidence?: number;
       why?: string;
       whyNot?: string;
+      escalate?: boolean;
     };
     return {
       sources: Array.isArray(row.sources) ? row.sources : [],
       confidence: typeof row.confidence === "number" ? row.confidence : null,
       why: typeof row.why === "string" ? row.why : "",
       whyNot: typeof row.whyNot === "string" ? row.whyNot : "",
+      escalate: Boolean(row.escalate),
     };
   }
-  return { sources: [], confidence: null, why: "", whyNot: "" };
+  return { sources: [], confidence: null, why: "", whyNot: "", escalate: false };
 }
 
 export async function getConversation(id: string) {
@@ -249,10 +254,11 @@ export async function getConversation(id: string) {
     project_id: string | null;
     status: string;
     channel: string | null;
+    last_message_at: Date | null;
     facts: unknown;
   }>(
     `select c.id, c.contact_id, ct.name as contact_name, c.project_id, c.status,
-            c.channel, ct.facts
+            c.channel, c.last_message_at, ct.facts
      from mychef_inbox.conversations c
      left join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
@@ -311,9 +317,73 @@ export async function getConversation(id: string) {
           confidence: meta.confidence,
           why: meta.why,
           whyNot: meta.whyNot,
+          escalate: meta.escalate,
         }
       : null,
     decided: Boolean(decisions[0]),
+  };
+}
+
+export async function getThreadTimingForConversation(
+  conversationId: string,
+): Promise<ThreadTiming | null> {
+  const conversations = await query<{
+    contact_id: string | null;
+    last_message_at: Date | null;
+  }>(
+    `select contact_id, last_message_at
+     from mychef_inbox.conversations
+     where workspace_id = $1 and id = $2`,
+    [MYCHEF_WORKSPACE, conversationId],
+  );
+  const conversation = conversations[0];
+  if (!conversation) return null;
+  const thread = await query<{ direction: string; created_at: Date }>(
+    `select direction, created_at
+     from mychef_inbox.messages
+     where workspace_id = $1 and conversation_id = $2
+     order by created_at asc`,
+    [MYCHEF_WORKSPACE, conversationId],
+  );
+  let contactFallback: { direction: string; created_at: Date }[] | undefined;
+  if (conversation.contact_id) {
+    contactFallback = await query<{ direction: string; created_at: Date }>(
+      `select m.direction, m.created_at
+       from mychef_inbox.messages m
+       join mychef_inbox.conversations c
+         on c.workspace_id = m.workspace_id and c.id = m.conversation_id
+       where m.workspace_id = $1
+         and c.contact_id = $2
+         and m.created_at >= now() - interval '30 days'
+       order by m.created_at asc
+       limit 2000`,
+      [MYCHEF_WORKSPACE, conversation.contact_id],
+    );
+  }
+  return computeThreadTiming(thread, conversation.last_message_at, new Date(), contactFallback);
+}
+
+export async function ensureDraftForConversation(conversationId: string, authorId: string) {
+  const conversation = await getConversation(conversationId);
+  if (!conversation) return { ok: false as const, error: "That conversation is not in this workspace." };
+  if (conversation.decided) {
+    return { ok: false as const, error: "This conversation already has a recorded decision." };
+  }
+  const staleMeta =
+    conversation.draft != null &&
+    !conversation.draft.why &&
+    conversation.draft.confidence == null;
+  if (conversation.draft && !staleMeta) {
+    return { ok: true as const, created: false as const, draft: conversation.draft };
+  }
+  const drafted = await draftForConversation(conversationId, authorId);
+  if (!drafted.ok) return drafted;
+  const refreshed = await getConversation(conversationId);
+  return {
+    ok: true as const,
+    created: true as const,
+    draft: refreshed?.draft ?? null,
+    error: refreshed?.draft ? undefined : "Draft was written but could not be reloaded.",
   };
 }
 
@@ -439,6 +509,7 @@ export async function draftForConversation(
     confidence: draft.confidence,
     why: draft.why,
     whyNot: draft.whyNot,
+    escalate: draft.escalate,
   };
   await query(
     `insert into mychef_inbox.drafts

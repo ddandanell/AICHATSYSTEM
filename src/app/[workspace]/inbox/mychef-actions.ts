@@ -1,9 +1,9 @@
 /**
  * Server actions for the myCHEF three-pane desk.
  * Purpose: draft, review (ledger only), tag update → re-draft. Never send.
- * Panes: workspace approve/regenerate/escalate; Client Info tags.
- * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
- *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/cbls-architecture.md
+ * IMC-33: ensureDraft on open; remember → pending situational knowledge.
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/contact-response-desk.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
  *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
  */
 "use server";
@@ -11,6 +11,7 @@
 import { revalidatePath } from "next/cache";
 import {
   draftForConversation,
+  ensureDraftForConversation,
   recordOutcome,
   reviewConversation,
   updateContactTags,
@@ -27,6 +28,24 @@ export async function draftConversationAction(conversationId: string): Promise<v
   await draftForConversation(conversationId, access.ctx.email || access.ctx.userId);
   revalidatePath(`/mychef/inbox`);
   revalidatePath(`/mychef/inbox/${conversationId}`);
+}
+
+export async function ensureDraftAction(
+  conversationId: string,
+): Promise<ActionState> {
+  const access = await getWorkspaceAccess("mychef");
+  if (access.status !== "ok" || !canReview(access.ctx.role)) {
+    return { error: "You cannot draft in this workspace." };
+  }
+  const result = await ensureDraftForConversation(
+    conversationId,
+    access.ctx.email || access.ctx.userId,
+  );
+  if (!result.ok) return { error: result.error };
+  revalidatePath(`/mychef/inbox/${conversationId}`);
+  return {
+    message: result.created ? "Draft generated." : "Draft already present.",
+  };
 }
 
 export async function updateTagsAction(
@@ -76,7 +95,12 @@ export async function reviewConversationAction(
   if (!saved.ok) return { error: saved.error };
   revalidatePath(`/mychef/inbox`);
   revalidatePath(`/mychef/candidates`);
-  return { message: "Review recorded. Nothing was sent.", id: saved.id };
+  return {
+    message: remember && humanDecision === "edited"
+      ? "Review recorded. Pending situational case queued for Learning. Nothing was sent."
+      : "Review recorded. Nothing was sent.",
+    id: saved.id,
+  };
 }
 
 export async function outcomeAction(decisionId: string, formData: FormData): Promise<void> {
