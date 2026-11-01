@@ -1,5 +1,8 @@
 /**
- * Neon queue list. Tables: conversations, contacts, decision_records. Do not auto-send.
+ * Legacy card queue (kept for local Docker tenants / fallbacks).
+ * myCHEF Neon uses the three-pane desk in desk.tsx instead.
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
  */
 import Link from "next/link";
 import { listInbox } from "@/data/mychef-store";

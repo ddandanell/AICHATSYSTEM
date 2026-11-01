@@ -1,26 +1,53 @@
+/**
+ * Server actions for the myCHEF three-pane desk.
+ * Purpose: draft, review (ledger only), tag update → re-draft. Never send.
+ * Panes: workspace approve/regenerate/escalate; Client Info tags.
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/cbls-architecture.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ */
 "use server";
 /**
  * Neon review, regenerate, and outcome. Tables: drafts, feedback, decision_records. Do not auto-send.
  */
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import {
   draftForConversation,
   recordOutcome,
   reviewConversation,
+  updateContactTags,
 } from "@/data/mychef-store";
 import { getWorkspaceAccess } from "@/lib/context";
 import { isHumanDecision, isReasonCode, OUTCOMES, type Outcome } from "@/lib/reason-codes";
 import { canReview } from "@/lib/workspace-access";
 
-export type ActionState = { error?: string; message?: string } | null;
+export type ActionState = { error?: string; message?: string; id?: string } | null;
 
 export async function draftConversationAction(conversationId: string): Promise<void> {
   const access = await getWorkspaceAccess("mychef");
   if (access.status !== "ok" || !canReview(access.ctx.role)) return;
   await draftForConversation(conversationId, access.ctx.email || access.ctx.userId);
+  revalidatePath(`/mychef/inbox`);
   revalidatePath(`/mychef/inbox/${conversationId}`);
+}
+
+export async function updateTagsAction(
+  conversationId: string,
+  tags: string[],
+): Promise<ActionState> {
+  const access = await getWorkspaceAccess("mychef");
+  if (access.status !== "ok" || !canReview(access.ctx.role)) {
+    return { error: "You cannot update tags in this workspace." };
+  }
+  const saved = await updateContactTags(conversationId, tags);
+  if (!saved.ok) return { error: saved.error };
+  await draftForConversation(conversationId, access.ctx.email || access.ctx.userId, {
+    tagHint: saved.tags.join(" "),
+  });
+  revalidatePath(`/mychef/inbox/${conversationId}`);
+  revalidatePath(`/mychef/inbox`);
+  return { message: "Tags saved. Knowledge refreshed and draft regenerated." };
 }
 
 export async function reviewConversationAction(
@@ -37,6 +64,7 @@ export async function reviewConversationAction(
   const rationale = String(formData.get("rationale") ?? "").trim();
   const whyNot = String(formData.get("why_not") ?? "").trim();
   const finalText = String(formData.get("final_text") ?? "");
+  const remember = formData.get("remember") === "on";
   if (!isHumanDecision(humanDecision)) return { error: "Choose a decision." };
   if (!isReasonCode(reasonCode)) return { error: "Choose a reason code." };
   if (!rationale || !whyNot) return { error: "Say why this reply, and why not the alternative." };
@@ -46,9 +74,12 @@ export async function reviewConversationAction(
     rationale,
     whyNot,
     finalText,
+    remember,
   });
   if (!saved.ok) return { error: saved.error };
-  redirect(`/mychef/inbox/${saved.id}`);
+  revalidatePath(`/mychef/inbox`);
+  revalidatePath(`/mychef/candidates`);
+  return { message: "Review recorded. Nothing was sent.", id: saved.id };
 }
 
 export async function outcomeAction(decisionId: string, formData: FormData): Promise<void> {

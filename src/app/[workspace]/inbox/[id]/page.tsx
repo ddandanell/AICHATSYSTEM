@@ -1,16 +1,19 @@
 /**
- * One conversation or recorded decision. Do not auto-send.
+ * Inbox detail route — opens the selected row inside the three-pane desk (myCHEF)
+ * or the legacy two-column decision review (local Docker tenants).
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
  */
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { reviewAction } from "@/app/[workspace]/inbox/[id]/actions";
+import { MychefDesk } from "@/app/[workspace]/inbox/desk";
 import { FeedbackForm } from "@/components/feedback-form";
 import { RetrievalPanel } from "@/components/retrieval-panel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "cn";
-import { MychefThread } from "@/app/[workspace]/inbox/thread";
 import { usesMychefInbox } from "@/db/mode";
 import { getWorkspaceAccess } from "@/lib/context";
 import { getDecision } from "@/lib/decisions";
@@ -24,17 +27,25 @@ export const metadata = { title: "Draft" };
 
 export default async function DecisionPage({
   params,
+  searchParams,
 }: PageProps<"/[workspace]/inbox/[id]">) {
   const { workspace, id } = await params;
+  const query = await searchParams;
   const access = await getWorkspaceAccess(workspace);
   if (access.status !== "ok") return null;
   if (usesMychefInbox()) {
-    const { getConversation } = await import("@/data/mychef-store");
-    const conversation = await getConversation(id);
-    if (conversation) redirect(`/${workspace}/inbox?id=${encodeURIComponent(id)}`);
-    const thread = await MychefThread({ id });
-    if (!thread) notFound();
-    return thread;
+    const page = Number(query.page ?? "1");
+    const search = typeof query.q === "string" ? query.q : "";
+    const filter = typeof query.filter === "string" ? query.filter : undefined;
+    return (
+      <MychefDesk
+        slug={access.ctx.orgSlug}
+        selectedId={id}
+        filterRaw={filter}
+        page={page}
+        search={search}
+      />
+    );
   }
   const decision = await getDecision(access.ctx.orgId, id);
   if (!decision) notFound();
@@ -83,30 +94,8 @@ export default async function DecisionPage({
                 <dt className="text-muted-foreground">Why not</dt>
                 <dd className="whitespace-pre-wrap">{decision.whyNot}</dd>
               </div>
-              <div>
-                <dt className="text-muted-foreground">Escalate</dt>
-                <dd>
-                  {decision.actionTaken === "escalate"
-                    ? "Yes. A person should take this. Nothing is sent."
-                    : "No. A reviewer can accept, edit, or reject the draft. Nothing is sent."}
-                </dd>
-              </div>
             </dl>
           ) : null}
-          <div className="flex flex-col gap-2">
-            <h2 className="text-sm font-medium">Cited sources</h2>
-            {(decision.sourceRefs ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">None cited.</p>
-            ) : (
-              <ul className="flex flex-wrap gap-2">
-                {decision.sourceRefs.map((source) => (
-                  <li key={source.id}>
-                    <Badge variant="outline">{source.title}</Badge>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
         </section>
         <section className="flex flex-col gap-4">
           {decision.status === "reviewed" ? (
@@ -122,53 +111,18 @@ export default async function DecisionPage({
                   <dd>{reasonLabel(decision.reasonCode)}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Why this reply</dt>
-                  <dd className="whitespace-pre-wrap">{decision.rationale}</dd>
-                </div>
-                <div>
-                  <dt className="text-muted-foreground">Why not the alternative</dt>
-                  <dd className="whitespace-pre-wrap">{decision.whyNot}</dd>
-                </div>
-                <div>
                   <dt className="text-muted-foreground">Final text</dt>
                   <dd className="whitespace-pre-wrap">{decision.finalText ?? "Nothing was sent."}</dd>
                 </div>
-                <div>
-                  <dt className="text-muted-foreground">Outcome</dt>
-                  <dd>{decision.outcome ?? "Not recorded yet."}</dd>
-                </div>
               </dl>
-              {decision.feedback.map((event) => (
-                <div key={event.id} className="flex flex-col gap-2 border-t pt-3 text-sm">
-                  <p className="text-muted-foreground">Source marks</p>
-                  <ul className="flex flex-wrap gap-2">
-                    {(event.sourceMarks ?? []).length === 0 ? (
-                      <li>None</li>
-                    ) : (
-                      event.sourceMarks.map((mark) => (
-                        <li key={`${mark.id}-${mark.mark}`}>
-                          <Badge variant="outline">
-                            {mark.id} · {mark.mark}
-                          </Badge>
-                        </li>
-                      ))
-                    )}
-                  </ul>
-                </div>
-              ))}
             </div>
           ) : canReview(access.ctx.role) ? (
-            <>
-              <a href="#review-form" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-fit")}>
-                I don’t like the way this is written.
-              </a>
             <FeedbackForm
               action={action}
               draft={decision.draftText}
               sources={decision.sourceRefs ?? []}
               catalog={catalog}
             />
-            </>
           ) : (
             <Alert>
               <AlertTitle>View only</AlertTitle>

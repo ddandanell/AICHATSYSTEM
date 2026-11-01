@@ -1,8 +1,12 @@
 /**
- * Inbox queue. Neon uses the three-pane cockpit. Do not auto-send.
+ * Inbox route — three-pane desk for myCHEF; legacy card queue for local Docker tenants.
+ * Panes: queue | workspace | context (see MychefDesk).
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
  */
 import Link from "next/link";
 import { draftAction } from "@/app/[workspace]/inbox/actions";
+import { MychefDesk } from "@/app/[workspace]/inbox/desk";
 import { DraftComposer } from "@/components/draft-composer";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -19,16 +23,6 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { QueueTabs } from "@/components/queue-tabs";
-import {
-  approveInboxAction,
-  regenerateInboxAction,
-  retagInboxAction,
-} from "@/app/[workspace]/inbox/cockpit-actions";
-import { InboxCockpit, type InboxSelection } from "@/components/inbox-cockpit";
-import { listInboxBoard, type InboxFilter } from "@/data/inbox-board";
-import { getConversation } from "@/data/mychef-store";
-import { draftMeta, tagsFromFacts } from "@/lib/inbox-tags";
-import { readAutopilot } from "@/lib/autopilot";
 import { usesMychefInbox } from "@/db/mode";
 import { getWorkspaceAccess } from "@/lib/context";
 import { listDecisions } from "@/lib/decisions";
@@ -48,34 +42,16 @@ export default async function InboxPage({
   if (access.status !== "ok") return null;
   const status = query.status === "reviewed" ? "reviewed" : "pending_review";
   if (usesMychefInbox()) {
+    const page = Number(query.page ?? "1");
     const search = typeof query.q === "string" ? query.q : "";
-    const filter = isFilter(query.filter) ? query.filter : "needs_review";
-    const selectedId = typeof query.id === "string" ? query.id : "";
-    const tagged = typeof query.tagged === "string" ? query.tagged : "";
-    const items = await listInboxBoard(search, filter);
-    const autopilot = await readAutopilot();
-    const conversation = selectedId ? await getConversation(selectedId) : null;
-    const selected = conversation ? toSelection(conversation) : null;
+    const filter = typeof query.filter === "string" ? query.filter : undefined;
     return (
-      <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">
-          {autopilot.enabled
-            ? "Sending is not connected."
-            : "Auto-pilot is off. A draft stays pending until you approve it."}
-        </p>
-        <InboxCockpit
-          slug={access.ctx.orgSlug}
-          filter={filter}
-          query={search}
-          items={items}
-          selected={selected}
-          canReview={canReview(access.ctx.role)}
-          tagged={tagged}
-          approveAction={approveInboxAction.bind(null, access.ctx.orgSlug)}
-          regenerateAction={regenerateInboxAction.bind(null, access.ctx.orgSlug)}
-          retagAction={retagInboxAction.bind(null, access.ctx.orgSlug)}
-        />
-      </div>
+      <MychefDesk
+        slug={access.ctx.orgSlug}
+        filterRaw={filter}
+        page={page}
+        search={search}
+      />
     );
   }
   const rows = await listDecisions(access.ctx.orgId, status);
@@ -149,43 +125,4 @@ export default async function InboxPage({
       )}
     </div>
   );
-}
-
-function isFilter(value: string | string[] | undefined): value is InboxFilter {
-  return value === "all" || value === "needs_review" || value === "auto_sent" || value === "escalated";
-}
-
-function toSelection(
-  conversation: NonNullable<Awaited<ReturnType<typeof getConversation>>>,
-): InboxSelection {
-  const meta = draftMeta(conversation.draft?.prompt_version);
-  const inbound = [...conversation.messages].reverse().find((message) => message.direction === "inbound")?.body ?? "";
-  const rawSources = Array.isArray(conversation.draft?.source_ids) ? conversation.draft.source_ids : [];
-  const sources = rawSources.flatMap((source) => {
-    if (!source || typeof source !== "object") return [];
-    const row = source as { id?: unknown; title?: unknown };
-    if (typeof row.id !== "string" || typeof row.title !== "string") return [];
-    return [{ id: row.id, title: row.title }];
-  });
-  return {
-    id: conversation.id,
-    name: conversation.contact_name ?? "Guest",
-    channel: conversation.channel ?? "",
-    tags: tagsFromFacts(conversation.facts, inbound),
-    contactId: conversation.contact_id,
-    phone: typeof conversation.facts?.phone === "string" ? conversation.facts.phone : null,
-    email: typeof conversation.facts?.email === "string" ? conversation.facts.email : null,
-    address: typeof conversation.facts?.address === "string" ? conversation.facts.address : null,
-    messages: conversation.messages.map((message) => ({
-      id: message.id,
-      direction: message.direction,
-      body: message.body,
-      at: message.created_at.toISOString(),
-    })),
-    draft: conversation.draft?.body ?? "",
-    confidence: meta.confidence,
-    why: meta.why,
-    sources,
-    decided: conversation.decided,
-  };
 }

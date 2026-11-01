@@ -1,15 +1,30 @@
 /**
- * Neon mychef_inbox reads and writes: knowledge, conversations, drafts, feedback, decision_records, audit_log, integration_connections. Do not auto-send.
+ * Neon mychef_inbox data access for the decision ledger and desk.
+ * Purpose: conversations, drafts, feedback, knowledge, learning candidates.
+ * Tables: contacts, conversations, messages, drafts, feedback, decision_records,
+ *         knowledge, audit_log, integration_connections, webhook_receipts.
+ * Do not auto-send. Channels stay adapters (GHL now; WhatsApp later).
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/cbls-architecture.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
  */
 import type { Pool, PoolClient } from "pg";
 import { appPool } from "@/db/client";
 import { recordAutoSendCandidateIfEnabled } from "@/lib/autopilot";
 import { decryptSecret, encryptSecret, keyHint } from "@/lib/crypto";
+import {
+  categoriesFromTags,
+  parseFacts,
+  tagsFromFacts,
+  withTags,
+  type ContactFacts,
+} from "@/lib/contact-tags";
 import { localStructuredDraft } from "@/lib/draft";
 import { tokenize } from "@/lib/embed";
 import { groupForTitle, type KnowledgeGroup } from "@/lib/knowledge-groups";
 import { PROVIDER_LABELS, PROVIDERS, type Provider } from "@/lib/providers";
 import type { HumanDecision, Outcome } from "@/lib/reason-codes";
+import type { SourceRef } from "@/db/schema";
 
 export const MYCHEF_WORKSPACE = "mychef";
 
@@ -247,6 +262,39 @@ export async function listInbox(
   return { rows, total, page: safePage, pageSize: PAGE_SIZE };
 }
 
+export type DraftMeta = {
+  sources: SourceRef[];
+  confidence: number | null;
+  why: string;
+  whyNot: string;
+};
+
+function normalizeDraftMeta(raw: unknown): DraftMeta {
+  if (Array.isArray(raw)) {
+    return {
+      sources: raw as SourceRef[],
+      confidence: null,
+      why: "",
+      whyNot: "",
+    };
+  }
+  if (raw && typeof raw === "object") {
+    const row = raw as {
+      sources?: SourceRef[];
+      confidence?: number;
+      why?: string;
+      whyNot?: string;
+    };
+    return {
+      sources: Array.isArray(row.sources) ? row.sources : [],
+      confidence: typeof row.confidence === "number" ? row.confidence : null,
+      why: typeof row.why === "string" ? row.why : "",
+      whyNot: typeof row.whyNot === "string" ? row.whyNot : "",
+    };
+  }
+  return { sources: [], confidence: null, why: "", whyNot: "" };
+}
+
 export async function getConversation(id: string) {
   const conversations = await query<{
     id: string;
@@ -266,6 +314,8 @@ export async function getConversation(id: string) {
   );
   const conversation = conversations[0];
   if (!conversation) return null;
+  const facts = parseFacts(conversation.facts);
+  const tags = tagsFromFacts(facts);
   const messages = await query<{
     id: string;
     direction: string;
@@ -300,10 +350,23 @@ export async function getConversation(id: string) {
      limit 1`,
     [MYCHEF_WORKSPACE, id],
   );
+  const draftRow = drafts[0] ?? null;
+  const meta = normalizeDraftMeta(draftRow?.source_ids);
   return {
     ...conversation,
+    facts,
+    tags,
+    categories: categoriesFromTags(tags),
     messages: messages.reverse(),
-    draft: drafts[0] ?? null,
+    draft: draftRow
+      ? {
+          ...draftRow,
+          sources: meta.sources,
+          confidence: meta.confidence,
+          why: meta.why,
+          whyNot: meta.whyNot,
+        }
+      : null,
     decided: Boolean(decisions[0]),
   };
 }
@@ -357,33 +420,49 @@ export async function getRecordedDecision(id: string) {
   };
 }
 
-async function rankKnowledge(inbound: string, tag?: string | null) {
-  const docs = await query<{ id: string; title: string; content: string; category: string | null }>(
-    `select id, title, content, category
+async function rankKnowledge(inbound: string, tagHint = "") {
+  const docs = await query<{
+    id: string;
+    title: string;
+    content: string;
+    source: string | null;
+    category: string | null;
+    project_id: string | null;
+  }>(
+    `select id, title, content, source, category, project_id
      from mychef_inbox.knowledge
      where workspace_id = $1
+       and status is distinct from 'retired'
        and source not in ('ledger-rule', 'learning-pass')
        and (source is distinct from 'situational' or status = 'approved')`,
     [MYCHEF_WORKSPACE],
   );
-  const needle = (tag ?? "").replaceAll("_", " ").toLowerCase();
+  const hint = tagHint.toLowerCase();
   return docs
     .map((doc) => {
-      const blob = `${doc.title}\n${doc.category ?? ""}\n${doc.content}`.toLowerCase();
-      const boost = needle && blob.includes(needle) ? 0.35 : 0;
+      let score = lexical(inbound, doc.title, doc.content);
+      if (hint) {
+        const hay = `${doc.title} ${doc.category ?? ""} ${doc.project_id ?? ""} ${doc.content.slice(0, 400)}`.toLowerCase();
+        if (hint.split(/\s+/).some((token) => token.length > 2 && hay.includes(token))) {
+          score += 0.35;
+        }
+      }
+      if (doc.source === "situational") score += 0.15;
       return {
         doc,
-        score: lexical(inbound, doc.title, doc.content) + boost,
+        score,
         kind: kindForTitle(doc.title),
       };
     })
     .sort((left, right) => right.score - left.score);
 }
 
+type DraftHint = string | null | { tagHint?: string };
+
 export async function draftForConversation(
   conversationId: string,
   authorId: string,
-  tag?: string | null,
+  hint?: DraftHint,
 ) {
   const conversation = await getConversation(conversationId);
   if (!conversation) return { ok: false as const, error: "That conversation is not in this workspace." };
@@ -394,7 +473,13 @@ export async function draftForConversation(
     [...conversation.messages].reverse().find((message) => message.direction === "inbound")
       ?.body ?? "";
   if (!inbound.trim()) return { ok: false as const, error: "This conversation has no inbound message." };
-  const ranked = await rankKnowledge(inbound, tag);
+  const tagHint =
+    typeof hint === "string"
+      ? hint
+      : hint && typeof hint === "object" && hint.tagHint
+        ? hint.tagHint
+        : conversation.tags.join(" ");
+  const ranked = await rankKnowledge(inbound, tagHint);
   const knowledge = ranked.slice(0, 4).map((item) => ({
       chunkId: item.doc.id,
       orgId: MYCHEF_WORKSPACE,
@@ -408,6 +493,12 @@ export async function draftForConversation(
   const messageId = [...conversation.messages]
     .reverse()
     .find((message) => message.direction === "inbound")?.id;
+  const sourcePayload = {
+    sources: draft.sourceRefs,
+    confidence: draft.confidence,
+    why: draft.why,
+    whyNot: draft.whyNot,
+  };
   await query(
     `insert into mychef_inbox.drafts
        (workspace_id, conversation_id, body, author_id, kind, based_on_message_id, model, source_ids, prompt_version)
@@ -419,7 +510,11 @@ export async function draftForConversation(
       authorId,
       messageId ?? null,
       JSON.stringify(draft.sourceRefs),
-      JSON.stringify({ confidence: draft.confidence, why: draft.why, escalate: draft.escalate, tag: tag ?? null }),
+      JSON.stringify({
+        ...sourcePayload,
+        escalate: draft.escalate,
+        tag: tagHint || null,
+      }),
     ],
   );
   const auto = await recordAutoSendCandidateIfEnabled(appPool, {
@@ -458,6 +553,7 @@ export async function reviewConversation(
   if (conversation.decided) return { ok: false as const, error: "This conversation was already reviewed." };
   if (!conversation.draft) return { ok: false as const, error: "Draft a reply before recording a decision." };
   const human = neonDecision(input.humanDecision);
+  const finalText = input.finalText.trim() || conversation.draft.body;
   const client = await appPool.connect();
   try {
     await client.query("begin");
@@ -471,12 +567,13 @@ export async function reviewConversation(
         conversationId,
         input.rationale,
         conversation.draft.body,
-        input.finalText.trim() || conversation.draft.body,
+        finalText,
         authorId,
       ],
     );
     const feedbackId = feedback.rows[0]?.id;
     if (!feedbackId) throw new Error("feedback was not stored");
+    const sourceRefs = conversation.draft.sources ?? [];
     const recorded = await client.query<{ id: string }>(
       `insert into mychef_inbox.decision_records
          (workspace_id, conversation_id, project_id, feedback_id, reason_code, rationale, why_not,
@@ -494,7 +591,7 @@ export async function reviewConversation(
         input.humanDecision === "escalated" ? "escalated" : "",
         human,
         authorId,
-        JSON.stringify(conversation.draft.source_ids ?? []),
+        JSON.stringify(sourceRefs),
       ],
     );
     const decisionId = recorded.rows[0]?.id;
@@ -504,33 +601,47 @@ export async function reviewConversation(
        values ($1, $2, 'feedback', $3)`,
       [MYCHEF_WORKSPACE, authorId, decisionId],
     );
-    if (input.remember && input.humanDecision === "edited" && decisionId) {
-      const tag = input.tags?.[0] ?? "private_chef";
+    if (
+      input.remember &&
+      input.humanDecision === "edited" &&
+      decisionId &&
+      finalText.trim() &&
+      finalText.trim() !== conversation.draft.body.trim()
+    ) {
+      const tag = (input.tags ?? conversation.tags)[0] ?? "general";
+      const snippetId = `situational:${decisionId}`;
       const content = [
-        `evidence: 1`,
-        `group: ${input.reasonCode}`,
-        `reason: ${input.reasonCode}`,
         `context_tag: ${tag}`,
-        ``,
-        `AI draft:`,
-        conversation.draft.body,
-        ``,
-        `Human reply:`,
-        input.finalText.trim() || conversation.draft.body,
-        ``,
+        `reason: ${input.reasonCode}`,
+        `source_decision_ids: ${decisionId}`,
+        "",
+        "## Proposed snippet",
         input.rationale,
+        "",
+        "## AI draft",
+        conversation.draft.body,
+        "",
+        "## Human final",
+        finalText,
+        "",
+        "## Why not",
+        input.whyNot,
       ].join("\n");
       await client.query(
         `insert into mychef_inbox.knowledge
            (workspace_id, id, title, content, category, status, scope, source, version, project_id, area_id, created_at, updated_at)
          values ($1, $2, $3, $4, $5, 'pending', 'business', 'situational', 1, 'mychef', 'general', now(), now())
-         on conflict (workspace_id, id) do nothing`,
+         on conflict (workspace_id, id) do update
+           set content = excluded.content,
+               title = excluded.title,
+               updated_at = now()
+           where mychef_inbox.knowledge.status = 'pending'`,
         [
           MYCHEF_WORKSPACE,
-          `situational:${decisionId}`,
-          `Situational case for ${tag.replaceAll("_", " ")}`,
+          snippetId,
+          `Situational case · ${tag} · ${input.reasonCode}`,
           content,
-          input.reasonCode,
+          tag.slice(0, 80) || "situational",
         ],
       );
     }
@@ -543,6 +654,256 @@ export async function reviewConversation(
   } finally {
     client.release();
   }
+}
+
+export type DeskFilter = "all" | "needs_review" | "auto_sent" | "escalated";
+
+export type DeskQueueItem = {
+  id: string;
+  kind: "conversation" | "decision";
+  name: string | null;
+  snippet: string;
+  when: Date | null;
+  tags: string[];
+  categories: ReturnType<typeof categoriesFromTags>;
+  confidence: number | null;
+  unread: boolean;
+  channel: string | null;
+  filterBucket: DeskFilter;
+};
+
+function confidenceFromSourceIds(raw: unknown): number | null {
+  return normalizeDraftMeta(raw).confidence;
+}
+
+export async function listDeskQueue(
+  filter: DeskFilter = "needs_review",
+  page = 1,
+  search = "",
+): Promise<{ rows: DeskQueueItem[]; total: number; page: number; pageSize: number }> {
+  const requested = pageOffset(page);
+  const needle = search.trim().replace(/[%_]/g, "");
+
+  if (filter === "auto_sent" || filter === "escalated") {
+    const reasonClause =
+      filter === "auto_sent"
+        ? `d.reason_code = 'auto_sent_candidate'`
+        : `(d.human_decision = 'rejected' and d.rejected_alternative = 'escalated')
+           or d.reason_code = 'needs_human'`;
+    const totalRows = await query<{ n: string }>(
+      `select count(*)::text as n
+       from mychef_inbox.decision_records d
+       left join mychef_inbox.conversations c
+         on c.workspace_id = d.workspace_id and c.id = d.conversation_id
+       left join mychef_inbox.contacts ct
+         on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
+       where d.workspace_id = $1
+         and (${reasonClause})
+         and ($2::text = '' or ct.name ilike '%' || $2 || '%')`,
+      [MYCHEF_WORKSPACE, needle],
+    );
+    const total = Number(totalRows[0]?.n ?? 0);
+    const safePage = Math.min(requested.page, Math.max(1, Math.ceil(total / PAGE_SIZE) || 1));
+    const offset = (safePage - 1) * PAGE_SIZE;
+    const rows = await query<{
+      id: string;
+      name: string | null;
+      inbound: string | null;
+      created_at: Date;
+      facts: unknown;
+      channel: string | null;
+      reason_code: string;
+    }>(
+      `select d.id::text as id, ct.name, left(m.body, 160) as inbound, d.created_at,
+              ct.facts, c.channel, d.reason_code
+       from mychef_inbox.decision_records d
+       left join mychef_inbox.conversations c
+         on c.workspace_id = d.workspace_id and c.id = d.conversation_id
+       left join mychef_inbox.contacts ct
+         on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
+       left join lateral (
+         select body from mychef_inbox.messages
+         where workspace_id = d.workspace_id and conversation_id = d.conversation_id
+           and direction = 'inbound'
+         order by created_at desc limit 1
+       ) m on true
+       where d.workspace_id = $1
+         and (${reasonClause})
+         and ($2::text = '' or ct.name ilike '%' || $2 || '%')
+       order by d.created_at desc
+       limit $3 offset $4`,
+      [MYCHEF_WORKSPACE, needle, PAGE_SIZE, offset],
+    );
+    return {
+      rows: rows.map((row) => {
+        const tags = tagsFromFacts(parseFacts(row.facts));
+        return {
+          id: row.id,
+          kind: "decision" as const,
+          name: row.name,
+          snippet: row.inbound ?? "",
+          when: row.created_at,
+          tags,
+          categories: categoriesFromTags(tags),
+          confidence: null,
+          unread: false,
+          channel: row.channel,
+          filterBucket: filter,
+        };
+      }),
+      total,
+      page: safePage,
+      pageSize: PAGE_SIZE,
+    };
+  }
+
+  const pendingOnly = filter === "needs_review" || filter === "all";
+  if (!pendingOnly) {
+    return { rows: [], total: 0, page: 1, pageSize: PAGE_SIZE };
+  }
+
+  const totalRows = await query<{ n: string }>(
+    `select count(*)::text as n
+     from mychef_inbox.conversations c
+     join mychef_inbox.contacts ct
+       on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
+     where c.workspace_id = $1
+       and c.status = 'needs_reply'
+       and ($2::text = '' or ct.name ilike '%' || $2 || '%')
+       and not exists (
+         select 1 from mychef_inbox.decision_records d
+         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
+       )`,
+    [MYCHEF_WORKSPACE, needle],
+  );
+  const total = Number(totalRows[0]?.n ?? 0);
+  const safePage = Math.min(requested.page, Math.max(1, Math.ceil(total / PAGE_SIZE) || 1));
+  const offset = (safePage - 1) * PAGE_SIZE;
+  const rows = await query<{
+    id: string;
+    name: string | null;
+    inbound: string | null;
+    last_message_at: Date | null;
+    facts: unknown;
+    channel: string | null;
+    source_ids: unknown;
+  }>(
+    `select c.id, ct.name, left(m.body, 160) as inbound, c.last_message_at,
+            ct.facts, c.channel, dr.source_ids
+     from mychef_inbox.conversations c
+     join mychef_inbox.contacts ct
+       on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
+     left join lateral (
+       select body from mychef_inbox.messages
+       where workspace_id = c.workspace_id and conversation_id = c.id and direction = 'inbound'
+       order by created_at desc limit 1
+     ) m on true
+     left join lateral (
+       select source_ids from mychef_inbox.drafts
+       where workspace_id = c.workspace_id and conversation_id = c.id
+       order by created_at desc limit 1
+     ) dr on true
+     where c.workspace_id = $1
+       and c.status = 'needs_reply'
+       and ($2::text = '' or ct.name ilike '%' || $2 || '%')
+       and not exists (
+         select 1 from mychef_inbox.decision_records d
+         where d.workspace_id = c.workspace_id and d.conversation_id = c.id
+       )
+     order by c.last_message_at desc nulls last
+     limit $3 offset $4`,
+    [MYCHEF_WORKSPACE, needle, PAGE_SIZE, offset],
+  );
+  return {
+    rows: rows.map((row) => {
+      const tags = tagsFromFacts(parseFacts(row.facts));
+      const confidence = confidenceFromSourceIds(row.source_ids);
+      return {
+        id: row.id,
+        kind: "conversation" as const,
+        name: row.name,
+        snippet: row.inbound ?? "",
+        when: row.last_message_at,
+        tags,
+        categories: categoriesFromTags(tags),
+        confidence,
+        unread: true,
+        channel: row.channel,
+        filterBucket: "needs_review",
+      };
+    }),
+    total,
+    page: safePage,
+    pageSize: PAGE_SIZE,
+  };
+}
+
+export async function updateContactTags(conversationId: string, tags: string[]) {
+  const conversation = await getConversation(conversationId);
+  if (!conversation?.contact_id) {
+    return { ok: false as const, error: "That conversation has no contact." };
+  }
+  const next = withTags(conversation.facts as ContactFacts, tags);
+  await query(
+    `update mychef_inbox.contacts
+     set facts = $3::jsonb
+     where workspace_id = $1 and id = $2`,
+    [MYCHEF_WORKSPACE, conversation.contact_id, JSON.stringify(next)],
+  );
+  return { ok: true as const, tags: tagsFromFacts(next) };
+}
+
+export type LearningCandidate = {
+  id: string;
+  title: string;
+  content: string;
+  status: string;
+  category: string;
+  source: string;
+  updated_at: Date;
+  snippet: string;
+  aiDraft: string;
+  humanFinal: string;
+  group: string;
+};
+
+function parseLearningCard(content: string, title: string): Pick<
+  LearningCandidate,
+  "snippet" | "aiDraft" | "humanFinal" | "group"
+> {
+  const group = content.match(/^group:\s*(.+)$/m)?.[1]?.trim()
+    || content.match(/^context_tag:\s*(.+)$/m)?.[1]?.trim()
+    || "suggested";
+  const snippet =
+    content.match(/## Proposed snippet\n([\s\S]*?)(?=\n## |\n*$)/)?.[1]?.trim()
+    || title;
+  const aiDraft = content.match(/## AI draft\n([\s\S]*?)(?=\n## |\n*$)/)?.[1]?.trim() || "";
+  const humanFinal = content.match(/## Human final\n([\s\S]*?)(?=\n## |\n*$)/)?.[1]?.trim() || "";
+  return { snippet, aiDraft, humanFinal, group };
+}
+
+export async function listLearningCandidates(): Promise<LearningCandidate[]> {
+  const rows = await query<{
+    id: string;
+    title: string;
+    content: string;
+    status: string;
+    category: string;
+    source: string;
+    updated_at: Date;
+  }>(
+    `select id, title, content, status, category, source, updated_at
+     from mychef_inbox.knowledge
+     where workspace_id = $1
+       and source in ('ledger-rule', 'situational', 'learning-pass')
+       and status = 'pending'
+     order by updated_at desc`,
+    [MYCHEF_WORKSPACE],
+  );
+  return rows.map((row) => ({
+    ...row,
+    ...parseLearningCard(row.content, row.title),
+  }));
 }
 
 export async function recordOutcome(decisionId: string, actorId: string, outcome: Outcome) {
