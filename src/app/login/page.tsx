@@ -1,10 +1,12 @@
 /**
- * Welcome sign-in. Operator password on Neon, email fallback on local Docker. Do not auto-send.
+ * Internal myCHEF staff/admin sign-in.
+ * Controlled operators only on Neon. Hashed passwords. No credentials on this page.
+ * Do not auto-send.
  */
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import { auth, clerkConfigured } from "@/auth";
+import { auth } from "@/auth";
 import { loginAction } from "@/app/login/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,9 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { usesMychefInbox } from "@/db/mode";
+
+export const metadata = { title: "Admin login" };
+export const instant = false;
 
 async function BounceIfSignedIn() {
   await connection();
@@ -45,27 +50,25 @@ export default async function LoginPage({
       <Suspense fallback={null}>
         <BounceIfSignedIn />
       </Suspense>
-      <section className="flex flex-1 flex-col gap-4">
-        <p className="text-sm text-muted-foreground">Inbox mychef</p>
-        <h1 className="max-w-md text-4xl font-medium tracking-tight">
-          Welcome. The drafts are waiting for you.
-        </h1>
-        <p className="max-w-md text-sm leading-6 text-muted-foreground">
-          myCHEF reads a guest message, proposes a reply, and stops. You approve it or say why it should change. Nothing is sent from this screen.
+      <section className="flex flex-1 flex-col gap-5">
+        <p className="text-sm font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          myCHEF · Inbox mychef
         </p>
-        <ol className="flex max-w-md flex-col gap-2 text-sm text-muted-foreground">
-          <li>1. Sign in with your approved email.</li>
-          <li>2. Open a conversation in the inbox.</li>
-          <li>3. Approve the draft, or edit it and say why.</li>
-        </ol>
+        <h1 className="max-w-lg text-4xl leading-tight tracking-tight md:text-5xl">
+          Internal admin login
+        </h1>
+        <p className="max-w-md text-base leading-7 text-muted-foreground">
+          Staff and administrators only. This is the myCHEF operations console — not a
+          public product signup.
+        </p>
       </section>
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Sign in</CardTitle>
           <CardDescription>
             {mychef
-              ? "Only an approved operator can open the ledger."
-              : "Local fallback for the seeded workspaces."}
+              ? "Approved myCHEF staff and admins only."
+              : "Local Docker fallback for Harbor Kitchen demos."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
@@ -73,15 +76,7 @@ export default async function LoginPage({
             <Alert variant="destructive">
               <AlertTitle>Could not sign in</AlertTitle>
               <AlertDescription>
-                That email is not approved, or the password does not match.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {clerkConfigured ? (
-            <Alert>
-              <AlertTitle>Clerk keys are set</AlertTitle>
-              <AlertDescription>
-                This console still signs in with the operator password stored on the server.
+                Check your email and password, or ask an owner to approve your access.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -89,12 +84,18 @@ export default async function LoginPage({
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
-                <Input id="email" name="email" type="email" required autoComplete="email" />
+                <Input id="email" name="email" type="email" required autoComplete="username" />
               </Field>
               {mychef ? (
                 <Field>
                   <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <Input id="password" name="password" type="password" required autoComplete="current-password" />
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
+                    required
+                    autoComplete="current-password"
+                  />
                 </Field>
               ) : (
                 <Field>
@@ -103,11 +104,13 @@ export default async function LoginPage({
                 </Field>
               )}
             </FieldGroup>
-            <Button type="submit">{mychef ? "Open the inbox" : "Continue"}</Button>
+            <Button type="submit" size="lg">
+              Sign in
+            </Button>
           </form>
           {mychef ? null : (
             <div className="flex flex-col gap-2">
-              <p className="text-sm text-muted-foreground">Seeded sessions</p>
+              <p className="text-sm text-muted-foreground">Seeded local sessions</p>
               {SEEDED.map((person) => (
                 <form key={person.email} action={loginAction}>
                   <input type="hidden" name="email" value={person.email} />

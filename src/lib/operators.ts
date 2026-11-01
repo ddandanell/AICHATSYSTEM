@@ -62,8 +62,11 @@ function toOperator(id: string, config: OperatorConfig | null, enabled: boolean)
   };
 }
 
+let bootstrapReady = false;
+
 export async function ensureBootstrapOperator() {
   if (!usesMychefInbox()) return;
+  if (bootstrapReady) return;
   const email = (process.env.OPERATOR_BOOTSTRAP_EMAIL || "bali@mychef.id").trim().toLowerCase();
   const password = process.env.OPERATOR_BOOTSTRAP_PASSWORD ?? "";
   if (!email.includes("@") || password.length < 8) return;
@@ -74,7 +77,13 @@ export async function ensureBootstrapOperator() {
     [WORKSPACE, id],
   );
   const stored = existing.rows[0]?.encrypted_secret ?? "";
-  if (stored.startsWith("scrypt$") && stored.split("$").length === 3) return;
+  // Skip when the stored scrypt hash already matches the bootstrap password.
+  if (stored.startsWith("scrypt$") && stored.split("$").length === 3) {
+    if (await verifyPassword(password, stored)) {
+      bootstrapReady = true;
+      return;
+    }
+  }
   const hash = await hashPassword(password);
   const name = email === "bali@mychef.id" ? "Bali" : email;
   await appPool.query(
@@ -94,6 +103,7 @@ export async function ensureBootstrapOperator() {
       JSON.stringify({ purpose: "operator", email, name, role: "owner", approved: true }),
     ],
   );
+  bootstrapReady = true;
 }
 
 export async function verifyOperator(email: string, password: string): Promise<Operator | null> {
