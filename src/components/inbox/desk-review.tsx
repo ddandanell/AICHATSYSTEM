@@ -17,6 +17,7 @@ import {
 } from "@/app/[workspace]/inbox/mychef-actions";
 import { CategoryBadge } from "@/components/inbox/category-badge";
 import { DiffText } from "@/components/inbox/diff-text";
+import { TimeStrip } from "@/components/inbox/time-strip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import type { CategoryTagId } from "@/lib/contact-tags";
 import { channelLabel } from "@/lib/channels";
+import { computeContactResponseMetrics } from "@/lib/contact-response";
 import { formatConfidence, formatWhen } from "@/lib/format";
 import { REASON_CODES } from "@/lib/reason-codes";
 import { cn } from "cn";

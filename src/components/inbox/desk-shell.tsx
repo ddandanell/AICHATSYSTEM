@@ -1,23 +1,26 @@
 /**
- * Full-height three-pane inbox shell (queue | workspace | context).
- * Purpose: desktop desk layout; on small screens stack list → detail.
- * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
- *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ * Full-height three-pane inbox shell (queue | workbench | context).
+ * Purpose: desktop Intercom/Front desk; mobile stacks list → detail.
+ * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-design-system.md
+ *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
  */
 "use client";
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { cn } from "cn";
 
 export function DeskShell({
   slug,
   ids,
   activeId,
+  queue,
   children,
 }: {
   slug: string;
   ids: string[];
   activeId: string | null;
+  queue: React.ReactNode;
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -51,11 +54,21 @@ export function DeskShell({
   }, [activeId, ids, router, slug]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <p className="shrink-0 border-b bg-amber-50 px-4 py-2 text-xs text-amber-950">
-        Sending is not connected. Reviews stay in the ledger. J/K move the queue.
-      </p>
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(15rem,22%)_minmax(0,78%)]">
+    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div
+        className={cn(
+          "flex min-h-0 w-full shrink-0 flex-col border-border lg:w-80 lg:border-r",
+          activeId ? "hidden lg:flex" : "flex",
+        )}
+      >
+        {queue}
+      </div>
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 flex-1 flex-col bg-background",
+          !activeId ? "hidden lg:flex" : "flex",
+        )}
+      >
         {children}
       </div>
     </div>

@@ -158,18 +158,24 @@ export async function MychefDesk({
   }
 
   return (
-    <DeskShell slug={slug} ids={ids} activeId={activeId}>
-      <QueuePane
-        slug={slug}
-        filter={filter}
-        search={search}
-        rows={inbox.rows}
-        activeId={activeId}
-        total={inbox.total}
-        page={inbox.page}
-        pageSize={inbox.pageSize}
-      />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{workspace}</div>
+    <DeskShell
+      slug={slug}
+      ids={ids}
+      activeId={activeId}
+      queue={
+        <QueuePane
+          slug={slug}
+          filter={filter}
+          search={search}
+          rows={inbox.rows}
+          activeId={activeId}
+          total={inbox.total}
+          page={inbox.page}
+          pageSize={inbox.pageSize}
+        />
+      }
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">{workspace}</div>
     </DeskShell>
   );
 }
