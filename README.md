@@ -19,6 +19,8 @@ npm run dev
 
 The dev server listens on [http://127.0.0.1:4317](http://127.0.0.1:4317). Sign in at `/login`, then open `/mychef/dashboard`.
 
+Mac clone and run steps, including `agent worker start`, are in [LOCAL.md](LOCAL.md).
+
 Local Docker (optional, not Neon):
 
 ```bash
@@ -31,24 +33,39 @@ npm run dev
 
 ## Env vars
 
-Names only. Values stay in `.env.local`.
+Names only. Values stay in `.env.local` or in the Vercel project settings. Do not commit them.
+
+Required for a Neon or Vercel run:
 
 | Name | Used for |
 |------|----------|
 | `DATABASE_URL` | App Postgres connection. Neon uses `mychef_runtime`. |
 | `KEY_READER_DATABASE_URL` | Read path for provider keys. |
-| `MIGRATION_DATABASE_URL` | Local migrations only. |
-| `AUTH_SECRET` | Auth.js session signing. |
-| `AUTH_URL` | Public app URL. |
-| `BYOK_ENCRYPTION_KEY` | AES-256-GCM master key for provider secrets. |
+| `AUTH_SECRET` | Auth.js session signing. 32 random bytes, base64. |
+| `BYOK_ENCRYPTION_KEY` | AES-256-GCM master key for provider secrets. 32 bytes, base64. |
+
+Optional:
+
+| Name | Used for |
+|------|----------|
+| `CRON_SECRET` | Bearer token for `GET /api/cron/learn`. When empty, the route refuses the call. |
+| `GHL_WEBHOOK_SECRET` | Shared secret for `POST /api/webhooks/ghl`. When empty, the stub stores the body and does not send. |
+| `AUTH_URL` | Public app URL. Local default is `http://127.0.0.1:4317`. |
+| `MIGRATION_DATABASE_URL` | Local Docker migrations only. Do not point this at Neon. |
+| `OPERATOR_BOOTSTRAP_EMAIL` | First approved operator. Default owner is `bali@mychef.id`. |
+| `OPERATOR_BOOTSTRAP_PASSWORD` | Hashed with scrypt on first boot. Never log it. |
 | `CLERK_SECRET_KEY` | Optional Clerk. Unused while operator login is on. |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Optional Clerk publishable key. |
 | `AUTH_GOOGLE_ID` | Optional Google sign-in. |
 | `AUTH_GOOGLE_SECRET` | Optional Google sign-in. |
-| `GHL_WEBHOOK_SECRET` | Optional shared secret for `POST /api/webhooks/ghl`. |
-| `CRON_SECRET` | Bearer token for `GET /api/cron/learn`. |
-| `OPERATOR_BOOTSTRAP_EMAIL` | First approved operator. Default owner is `bali@mychef.id`. |
-| `OPERATOR_BOOTSTRAP_PASSWORD` | Hashed with scrypt on first boot. Never log it. |
+
+## Vercel
+
+`vercel.json` schedules `GET /api/cron/learn` daily at 02:00 Asia/Kuala_Lumpur (`0 18 * * *` UTC). The cron does not send a guest reply.
+
+Set the required names above on the Vercel project, plus `CRON_SECRET` if the cron should run and `GHL_WEBHOOK_SECRET` if the webhook should require a shared secret. Set `AUTH_URL` to the deployment URL. Leave automatic sending off. Phases 3–5 are not part of this deploy.
+
+Deploy branch `cursor/decision-ledger-console-d800`. The app is Next.js (`npm run build`). Vercel runs its own start command. `npm start` on a laptop still uses port 4317.
 
 ## Architecture
 
@@ -116,7 +133,7 @@ On the Neon inbox, sign-in is an approved operator email and password. The first
 
 Page: `/mychef/settings/keys`. Code: `src/app/[workspace]/settings/keys` and `src/components/key-manager.tsx`.
 
-`BYOK_ENCRYPTION_KEY` is a 32-byte key, base64-encoded. The values in `.env.example` are for local development. Replace them before storing a real provider key.
+`BYOK_ENCRYPTION_KEY` is a 32-byte key, base64-encoded. `.env.example` leaves it empty. Generate it locally and store it only in `.env.local` or Vercel. The same value must stay stable or saved provider keys cannot be decrypted.
 
 Vercel AI Gateway and DeepSeek are the first keys. Gateway defaults to `https://ai-gateway.vercel.sh/v1`. DeepSeek uses `https://api.deepseek.com`. A saved key is shown only as a four-character hint. Rows live on `mychef_inbox.integration_connections` (`kind = ai`, id = provider name). A connection test calls the provider from the server. If no active key is stored, the result is `No active key stored for this provider.` The test does not invent a completion. Azure OpenAI and Bedrock need an endpoint or signing setup this slice does not store, so those tests refuse to send the key. Storing or testing a key does not send a guest reply.
 

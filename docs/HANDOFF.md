@@ -18,6 +18,8 @@ Also open:
 - Schema: Neon `mychef_inbox` (database `mychef`, role `mychef_runtime`)
 - Connection string: `DATABASE_URL` in gitignored `.env.local` only
 - **No auto-send.** Auto-pilot default off.
+- Mac steps: [LOCAL.md](../LOCAL.md). Required env names: `DATABASE_URL`, `KEY_READER_DATABASE_URL`, `AUTH_SECRET`, `BYOK_ENCRYPTION_KEY`. Optional: `CRON_SECRET`, `GHL_WEBHOOK_SECRET`. Values stay out of git.
+- Vercel: `vercel.json` cron only. Deploy branch `cursor/decision-ledger-console-d800`.
 
 ## Settings already accepted
 
