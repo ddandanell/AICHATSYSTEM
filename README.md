@@ -2,6 +2,8 @@
 
 Review drafted client replies and record why a reply was right or wrong. The console is a decision ledger, a key vault, and a review queue. It is not a chat window, and it does not send messages.
 
+**Docs:** [documentation/](./documentation/) · **GitHub:** [numini-co/inbox-mychef](https://github.com/numini-co/inbox-mychef)
+
 Each workspace is a tenant. Postgres row-level security is the boundary. Provider keys stay on the server, encrypted with AES-256-GCM. The browser only ever sees a four-character hint.
 
 ## Database
