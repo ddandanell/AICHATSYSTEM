@@ -9,9 +9,13 @@ import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
 import { signIn, signOut } from "@/auth";
 import { usesMychefInbox } from "@/db/mode";
+import { ensureBootstrapOperator } from "@/lib/operators";
 
 export async function loginAction(formData: FormData) {
   await connection();
+  if (usesMychefInbox()) {
+    await ensureBootstrapOperator();
+  }
   const email = formData.get("email");
   if (usesMychefInbox()) {
     try {
