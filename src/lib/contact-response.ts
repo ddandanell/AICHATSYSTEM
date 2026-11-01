@@ -22,6 +22,8 @@ export type ContactResponseMetrics = {
   yourAvgReplyLabel: string;
   guestAvgReplyLabel: string;
   averagesHint: string | null;
+  lastActivityAt: Date | null;
+  lastActivityLabel: string;
 };
 
 const KL = "Asia/Kuala_Lumpur";
@@ -105,6 +107,7 @@ function replyAverages(messages: DeskMessage[]): {
 
 export function computeContactResponseMetrics(
   messages: DeskMessage[],
+  lastMessageAt?: Date | string | null,
   now = new Date(),
 ): ContactResponseMetrics {
   const ordered = [...messages]
@@ -117,6 +120,7 @@ export function computeContactResponseMetrics(
 
   const startedAt = ordered[0]?.at ?? null;
   const last = ordered[ordered.length - 1] ?? null;
+  const lastActivityAt = asDate(lastMessageAt) ?? last?.at ?? null;
   const averages = replyAverages(messages);
 
   let waitingLabel = "—";
@@ -153,5 +157,7 @@ export function computeContactResponseMetrics(
     yourAvgReplyLabel: averages.staff != null ? formatRelativeDuration(averages.staff) : "—",
     guestAvgReplyLabel: averages.guest != null ? formatRelativeDuration(averages.guest) : "—",
     averagesHint,
+    lastActivityAt,
+    lastActivityLabel: lastActivityAt ? formatKl(lastActivityAt) : "—",
   };
 }

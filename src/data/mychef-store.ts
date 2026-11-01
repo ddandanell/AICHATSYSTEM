@@ -213,6 +213,7 @@ export type DraftMeta = {
   confidence: number | null;
   why: string;
   whyNot: string;
+  escalate: boolean;
 };
 
 function normalizeDraftMeta(raw: unknown): DraftMeta {
@@ -222,6 +223,7 @@ function normalizeDraftMeta(raw: unknown): DraftMeta {
       confidence: null,
       why: "",
       whyNot: "",
+      escalate: false,
     };
   }
   if (raw && typeof raw === "object") {
@@ -230,15 +232,17 @@ function normalizeDraftMeta(raw: unknown): DraftMeta {
       confidence?: number;
       why?: string;
       whyNot?: string;
+      escalate?: boolean;
     };
     return {
       sources: Array.isArray(row.sources) ? row.sources : [],
       confidence: typeof row.confidence === "number" ? row.confidence : null,
       why: typeof row.why === "string" ? row.why : "",
       whyNot: typeof row.whyNot === "string" ? row.whyNot : "",
+      escalate: Boolean(row.escalate),
     };
   }
-  return { sources: [], confidence: null, why: "", whyNot: "" };
+  return { sources: [], confidence: null, why: "", whyNot: "", escalate: false };
 }
 
 export async function getConversation(id: string) {
@@ -249,10 +253,11 @@ export async function getConversation(id: string) {
     project_id: string | null;
     status: string;
     channel: string | null;
+    last_message_at: Date | null;
     facts: unknown;
   }>(
     `select c.id, c.contact_id, ct.name as contact_name, c.project_id, c.status,
-            c.channel, ct.facts
+            c.channel, c.last_message_at, ct.facts
      from mychef_inbox.conversations c
      left join mychef_inbox.contacts ct
        on ct.workspace_id = c.workspace_id and ct.id = c.contact_id
@@ -311,9 +316,35 @@ export async function getConversation(id: string) {
           confidence: meta.confidence,
           why: meta.why,
           whyNot: meta.whyNot,
+          escalate: meta.escalate,
         }
       : null,
     decided: Boolean(decisions[0]),
+  };
+}
+
+/** Create a draft on open, or refresh stale drafts missing why/confidence. */
+export async function ensureDraftForConversation(conversationId: string, authorId: string) {
+  const conversation = await getConversation(conversationId);
+  if (!conversation) return { ok: false as const, error: "That conversation is not in this workspace." };
+  if (conversation.decided) {
+    return { ok: false as const, error: "This conversation already has a recorded decision." };
+  }
+  const staleMeta =
+    conversation.draft != null &&
+    !conversation.draft.why &&
+    conversation.draft.confidence == null;
+  if (conversation.draft && !staleMeta) {
+    return { ok: true as const, created: false as const, draft: conversation.draft };
+  }
+  const drafted = await draftForConversation(conversationId, authorId);
+  if (!drafted.ok) return drafted;
+  const refreshed = await getConversation(conversationId);
+  return {
+    ok: true as const,
+    created: true as const,
+    draft: refreshed?.draft ?? null,
+    error: refreshed?.draft ? undefined : "Draft was written but could not be reloaded.",
   };
 }
 
@@ -439,6 +470,7 @@ export async function draftForConversation(
     confidence: draft.confidence,
     why: draft.why,
     whyNot: draft.whyNot,
+    escalate: draft.escalate,
   };
   await query(
     `insert into mychef_inbox.drafts

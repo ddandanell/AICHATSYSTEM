@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  draftForConversation,
+  ensureDraftForConversation,
   getConversation,
   getRecordedDecision,
   listDeskQueue,
@@ -82,8 +82,8 @@ export async function MychefDesk({
       <div className="flex flex-col gap-2">
         <h2 className="text-lg font-medium tracking-tight">Pick a conversation</h2>
         <p className="max-w-sm text-sm text-muted-foreground">
-          Open a queue item to see timers, the thread, and an AI suggested reply. Nothing sends from
-          this desk.
+          Open a queue item for the response clock, thread, and an AI suggested reply. Approve
+          records the ledger only — nothing sends from this desk.
         </p>
       </div>
     </div>
@@ -173,18 +173,32 @@ export async function MychefDesk({
         </article>
       );
     } else {
+      const access = await getWorkspaceAccess(slug);
       let conversation = await getConversation(activeId);
-      if (conversation && !conversation.draft && !conversation.decided) {
-        const access = await getWorkspaceAccess(slug);
-        if (access.status === "ok" && canReview(access.ctx.role)) {
-          await draftForConversation(conversation.id, access.ctx.email || access.ctx.userId);
-          conversation = await getConversation(activeId);
+      let draftError: string | null = null;
+      if (
+        conversation &&
+        !conversation.decided &&
+        access.status === "ok" &&
+        canReview(access.ctx.role)
+      ) {
+        const ensured = await ensureDraftForConversation(
+          conversation.id,
+          access.ctx.email || access.ctx.userId,
+        );
+        if (!ensured.ok) draftError = ensured.error;
+        else if (ensured.created && !ensured.draft) {
+          draftError = ensured.error ?? "Could not load the AI draft.";
         }
+        conversation = (await getConversation(activeId)) ?? conversation;
       }
       if (conversation) {
         const knowledge = await listStoredKnowledge();
         const titles = Object.fromEntries(knowledge.map((doc) => [doc.id, doc.title]));
-        const metrics = computeContactResponseMetrics(conversation.messages);
+        const metrics = computeContactResponseMetrics(
+          conversation.messages,
+          conversation.last_message_at,
+        );
         workspace = (
           <DeskReview
             key={`${conversation.id}:${conversation.draft?.body ?? "empty"}`}
@@ -192,6 +206,7 @@ export async function MychefDesk({
             nextId={nextId}
             knowledgeTitles={titles}
             metrics={metrics}
+            draftError={draftError}
             conversation={{
               id: conversation.id,
               contact_name: conversation.contact_name,
@@ -214,10 +229,28 @@ export async function MychefDesk({
                     confidence: conversation.draft.confidence,
                     why: conversation.draft.why,
                     whyNot: conversation.draft.whyNot,
+                    escalate: conversation.draft.escalate,
                   }
                 : null,
             }}
           />
+        );
+      } else {
+        workspace = (
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+            <Alert variant="destructive" className="max-w-md text-left">
+              <AlertTitle>Conversation not found</AlertTitle>
+              <AlertDescription>
+                That thread is not in this workspace queue. Pick another item or refresh.
+              </AlertDescription>
+            </Alert>
+            <Link
+              href={`/${slug}/inbox`}
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-fit")}
+            >
+              Back to queue
+            </Link>
+          </div>
         );
       }
     }
