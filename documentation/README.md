@@ -4,9 +4,8 @@ Project docs for the myCHEF operations console (decision ledger, inbox desk, kno
 
 ## Repository
 
-- **GitHub:** [numini-co/inbox-mychef](https://github.com/numini-co/inbox-mychef)
-- **Origin (Cursor):** `https://origin.cursor.com/git/team-numini/tmp-c3cb3faec518f5f4.git`
-- **Production (when deployed):** `https://inbox-mychef-gilt.vercel.app`
+- **Source of truth:** Cursor Origin (this agent checkout). Do not point docs at a random `github.com/...` remote unless the project Create-repo flow created it.
+- **Production:** `https://inbox-mychef-gilt.vercel.app` (Vercel). Redeploys follow the Origin branch the project is linked to.
 
 ## Start here
 
