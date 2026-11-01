@@ -1,5 +1,5 @@
 /**
- * Contact response time strip — Started / Waiting / avg replies.
+ * Contact response time strip — Started / Waiting / avg replies / Last activity.
  * Purpose: always-visible SLA context above the thread (no DDL).
  * Specs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/contact-response-desk.md
  *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-design-system.md
@@ -42,9 +42,9 @@ export function TimeStrip({ metrics }: { metrics: ContactResponseMetrics }) {
       <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/30 p-4">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <ClockIcon className="size-3.5" />
-          <span>Response clock</span>
+          <span>Response clock · Asia/Kuala_Lumpur</span>
         </div>
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <Metric label="Started" value={metrics.startedLabel} />
           <Metric
             label="Waiting"
@@ -61,6 +61,11 @@ export function TimeStrip({ metrics }: { metrics: ContactResponseMetrics }) {
             label="Guest avg reply"
             value={metrics.guestAvgReplyLabel}
             title={metrics.averagesHint ?? undefined}
+          />
+          <Metric
+            label="Last activity"
+            value={metrics.lastActivityLabel}
+            title={metrics.lastActivityAt?.toISOString()}
           />
         </div>
         {metrics.averagesHint ? (
