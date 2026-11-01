@@ -84,8 +84,11 @@ function roleOf(value: unknown): OperatorRole {
   return "reviewer";
 }
 
+let bootstrapReady = false;
+
 export async function ensureBootstrapOperator(): Promise<void> {
   if (!usesMychefInbox()) return;
+  if (bootstrapReady) return;
   const email = normalizeEmail(process.env.OPERATOR_BOOTSTRAP_EMAIL || "bali@mychef.id");
   const password = process.env.OPERATOR_BOOTSTRAP_PASSWORD ?? "";
   const name = (process.env.OPERATOR_BOOTSTRAP_NAME || "Bali").trim() || "Bali";
@@ -103,14 +106,18 @@ export async function ensureBootstrapOperator(): Promise<void> {
     [WORKSPACE, id],
   );
   const row = existing.rows[0];
-  // Already seeded and approved — do not re-hash on every request.
+  // Already seeded and approved — skip re-hash when the bootstrap password still matches.
   if (
     row?.encrypted_secret?.startsWith("scrypt$") &&
     row.enabled &&
     row.config?.purpose === "operator" &&
     row.config?.approved === true
   ) {
-    return;
+    const ok = await verifyPassword(password, row.encrypted_secret);
+    if (ok) {
+      bootstrapReady = true;
+      return;
+    }
   }
 
   const hashed = await hashPassword(password);
@@ -138,6 +145,7 @@ export async function ensureBootstrapOperator(): Promise<void> {
       }),
     ],
   );
+  bootstrapReady = true;
 }
 
 export async function verifyOperator(

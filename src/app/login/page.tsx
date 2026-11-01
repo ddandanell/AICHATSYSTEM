@@ -1,6 +1,6 @@
 /**
- * Welcome sign-in for Inbox mychef.
- * Controlled operators only on Neon. Hashed passwords. No auto-send.
+ * Internal myCHEF staff/admin sign-in.
+ * Controlled operators only on Neon. Hashed passwords. No credentials on this page.
  * Docs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
  */
 import { connection } from "next/server";
@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { usesMychefInbox } from "@/db/mode";
 import { ensureBootstrapOperator } from "@/lib/operators";
 
-export const metadata = { title: "Welcome" };
+export const metadata = { title: "Admin login" };
 export const instant = false;
 
 async function BounceIfSignedIn() {
@@ -46,7 +46,7 @@ async function LoginError({
     <Alert variant="destructive">
       <AlertTitle>Could not sign in</AlertTitle>
       <AlertDescription>
-        Use an approved email and password. Ask an owner on Access if you need an account.
+        Check your email and password, or ask an owner to approve your access.
       </AlertDescription>
     </Alert>
   );
@@ -70,28 +70,23 @@ export default function LoginPage({
       </Suspense>
       <section className="flex flex-1 flex-col gap-5">
         <p className="text-sm font-medium tracking-[0.18em] text-muted-foreground uppercase">
-          myCHEF Inbox
+          myCHEF · Inbox mychef
         </p>
         <h1 className="max-w-lg font-serif text-4xl leading-tight tracking-tight md:text-5xl">
-          Welcome back to the decision ledger
+          Internal admin login
         </h1>
         <p className="max-w-md text-base leading-7 text-muted-foreground">
-          This console reads guest messages, drafts a reply for you to review, and
-          records why you accepted or changed it. It does not send anything on its own.
+          Staff and administrators only. This is the myCHEF operations console — not a
+          public product signup.
         </p>
-        <ol className="max-w-md list-decimal space-y-2 pl-5 text-sm leading-6 text-muted-foreground">
-          <li>Sign in with your approved email and password.</li>
-          <li>Open the dashboard for what needs a reply.</li>
-          <li>Review Inbox, update Knowledge, or paste provider Keys.</li>
-        </ol>
       </section>
       <Card className="w-full max-w-md shadow-sm">
         <CardHeader>
           <CardTitle>Sign in</CardTitle>
           <CardDescription>
             {neon
-              ? "Only approved operators can open myCHEF. Passwords stay hashed on the server."
-              : "Local Docker fallback. Email creates or finds your account; no password is stored here."}
+              ? "Approved myCHEF staff and admins only."
+              : "Local Docker fallback for Harbor Kitchen demos."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
@@ -108,7 +103,6 @@ export default function LoginPage({
                   type="email"
                   required
                   autoComplete="username"
-                  placeholder={neon ? "you@mychef.id" : "you@example.com"}
                 />
               </Field>
               {neon ? (
@@ -135,18 +129,10 @@ export default function LoginPage({
               )}
             </FieldGroup>
             <Button type="submit" size="lg">
-              {neon ? "Enter the ledger" : "Continue"}
+              Sign in
             </Button>
           </form>
-          {neon ? (
-            <Alert>
-              <AlertTitle>Automatic sending is not on</AlertTitle>
-              <AlertDescription>
-                After you sign in you land on the dashboard. Approve operators under
-                Settings → Access. Provider keys stay encrypted on the server.
-              </AlertDescription>
-            </Alert>
-          ) : (
+          {!neon ? (
             <div className="flex flex-col gap-2">
               <p className="text-sm text-muted-foreground">Seeded local sessions</p>
               <form action={loginAction}>
@@ -166,7 +152,7 @@ export default function LoginPage({
                 </Button>
               </form>
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
     </main>
