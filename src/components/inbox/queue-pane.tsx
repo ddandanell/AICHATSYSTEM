@@ -5,11 +5,18 @@
  *        /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/inbox-ux.md
  */
 import Link from "next/link";
-import { SearchIcon } from "lucide-react";
+import { InboxIcon, SearchIcon } from "lucide-react";
 import { CategoryBadge, ConfidenceDot } from "@/components/inbox/category-badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -115,8 +122,22 @@ export function QueuePane({
         <ScrollArea className="h-full">
           <ul className="flex flex-col">
             {rows.length === 0 ? (
-              <li className="px-4 py-8 text-sm text-muted-foreground">
-                Nothing in this filter.
+              <li className="px-4 py-8">
+                <Empty className="border border-dashed py-8">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <InboxIcon />
+                    </EmptyMedia>
+                    <EmptyTitle>Nothing in this filter</EmptyTitle>
+                    <EmptyDescription>
+                      {search
+                        ? "No conversations match this search."
+                        : filter === "needs_review"
+                          ? "No threads waiting for review."
+                          : "Try another filter or search."}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               </li>
             ) : (
               rows.map((row) => {
