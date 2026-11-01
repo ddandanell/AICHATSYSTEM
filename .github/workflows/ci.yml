@@ -1,0 +1,36 @@
+# Build check for GitHub. Production deploys come from Vercel Git integration
+# on https://github.com/numini-co/inbox-mychef (preferred tip:
+# cursor/decision-ledger-console-d800). This workflow does not deploy.
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "cursor/**"
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Stub values so route collection can import modules. Pools stay lazy until runtime.
+      DATABASE_URL: postgres://inbox_app:ci@127.0.0.1:5432/inbox_mychef
+      KEY_READER_DATABASE_URL: postgres://inbox_key_reader:ci@127.0.0.1:5432/inbox_mychef
+      AUTH_SECRET: ci-build-auth-secret-not-for-production-use
+      BYOK_ENCRYPTION_KEY: Y2ktYnVpbGQtYnlvay1rZXktMzItYnl0ZXMhISE=
+      AUTH_URL: http://127.0.0.1:4317
+      OPERATOR_BOOTSTRAP_EMAIL: bali@mychef.id
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+      - run: npm ci
+      - run: npm run build

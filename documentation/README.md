@@ -4,8 +4,9 @@ Project docs for the myCHEF operations console (decision ledger, inbox desk, kno
 
 ## Repository
 
-- **GitHub:** [ddandanell/AICHATSYSTEM](https://github.com/ddandanell/AICHATSYSTEM) (`https://github.com/ddandanell/AICHATSYSTEM.git`)
-- **Production:** `https://inbox-mychef-gilt.vercel.app` (Vercel)
+- **GitHub (canonical):** [numini-co/inbox-mychef](https://github.com/numini-co/inbox-mychef)
+- **Preferred ship tip:** `cursor/decision-ledger-console-d800`
+- **Deploy:** [deploy/github-vercel.md](./deploy/github-vercel.md)
 
 ## Start here
 
@@ -15,6 +16,7 @@ Project docs for the myCHEF operations console (decision ledger, inbox desk, kno
 | [todo.md](./todo.md) | Ordered build list |
 | [handoff.md](./handoff.md) | Agent / engineer onboarding |
 | [local-and-vercel.md](./local-and-vercel.md) | Local Mac + Vercel notes |
+| [deploy/github-vercel.md](./deploy/github-vercel.md) | Clone from GitHub, link Vercel, env, CI |
 
 ## Product UX
 

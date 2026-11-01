@@ -6,6 +6,8 @@ Review drafted client replies and record why a reply was right or wrong. The con
 
 Current branch: `cursor/decision-ledger-console-d800`.
 
+Canonical GitHub: [numini-co/inbox-mychef](https://github.com/numini-co/inbox-mychef). Deploy notes: [documentation/deploy/github-vercel.md](./documentation/deploy/github-vercel.md).
+
 Product docs in this repo: [documentation/](./documentation/).
 
 Neon schema in use: `mychef_inbox` on database `mychef`, role `mychef_runtime`. That role cannot create tables. Filter every query by `workspace_id`.
@@ -13,13 +15,16 @@ Neon schema in use: `mychef_inbox` on database `mychef`, role `mychef_runtime`. 
 ## How to run
 
 ```bash
+git clone https://github.com/numini-co/inbox-mychef.git
+cd inbox-mychef
+git checkout cursor/decision-ledger-console-d800
 npm install
 cp .env.example .env.local
 # Put real values only in .env.local. Never commit that file.
 npm run dev
 ```
 
-The dev server listens on [http://127.0.0.1:4317](http://127.0.0.1:4317). Sign in at `/login`, then open `/mychef/dashboard`.
+Requires Node.js 20.9+ (`.nvmrc` → 22). The dev server listens on [http://127.0.0.1:4317](http://127.0.0.1:4317). Sign in at `/login`, then open `/mychef/dashboard`.
 
 Mac clone and run steps, including `agent worker start`, are in [LOCAL.md](LOCAL.md).
 
@@ -37,7 +42,7 @@ npm run dev
 
 Names only. Values stay in `.env.local` or in the Vercel project settings. Do not commit them.
 
-Required for a Neon or Vercel run:
+Required for a Neon or Vercel run (see `.env.example`):
 
 | Name | Used for |
 |------|----------|
@@ -45,6 +50,9 @@ Required for a Neon or Vercel run:
 | `KEY_READER_DATABASE_URL` | Read path for provider keys. |
 | `AUTH_SECRET` | Auth.js session signing. 32 random bytes, base64. |
 | `BYOK_ENCRYPTION_KEY` | AES-256-GCM master key for provider secrets. 32 bytes, base64. |
+| `AUTH_URL` | Public app URL. Local default is `http://127.0.0.1:4317`. |
+| `OPERATOR_BOOTSTRAP_EMAIL` | First approved operator. Default owner is `bali@mychef.id`. |
+| `OPERATOR_BOOTSTRAP_PASSWORD` | Hashed with scrypt on first boot. Never log it. |
 
 Optional:
 
@@ -52,22 +60,15 @@ Optional:
 |------|----------|
 | `CRON_SECRET` | Bearer token for `GET /api/cron/learn`. When empty, the route refuses the call. |
 | `GHL_WEBHOOK_SECRET` | Shared secret for `POST /api/webhooks/ghl`. When empty, the stub stores the body and does not send. |
-| `AUTH_URL` | Public app URL. Local default is `http://127.0.0.1:4317`. |
 | `MIGRATION_DATABASE_URL` | Local Docker migrations only. Do not point this at Neon. |
-| `OPERATOR_BOOTSTRAP_EMAIL` | First approved operator. Default owner is `bali@mychef.id`. |
-| `OPERATOR_BOOTSTRAP_PASSWORD` | Hashed with scrypt on first boot. Never log it. |
-| `CLERK_SECRET_KEY` | Optional Clerk. Unused while operator login is on. |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Optional Clerk publishable key. |
-| `AUTH_GOOGLE_ID` | Optional Google sign-in. |
-| `AUTH_GOOGLE_SECRET` | Optional Google sign-in. |
 
 ## Vercel
 
-`vercel.json` schedules `GET /api/cron/learn` daily at 02:00 Asia/Kuala_Lumpur (`0 18 * * *` UTC). The cron does not send a guest reply.
+`vercel.json` sets framework Next.js, `npm ci` / `npm run build`, region `sin1`, and schedules `GET /api/cron/learn` daily at 02:00 Asia/Kuala_Lumpur (`0 18 * * *` UTC). The cron does not send a guest reply.
 
 Set the required names above on the Vercel project, plus `CRON_SECRET` if the cron should run and `GHL_WEBHOOK_SECRET` if the webhook should require a shared secret. Set `AUTH_URL` to the deployment URL. Leave automatic sending off. Phases 3–5 are not part of this deploy.
 
-Deploy branch `cursor/decision-ledger-console-d800`. The app is Next.js (`npm run build`). Vercel runs its own start command. `npm start` on a laptop still uses port 4317.
+Deploy branch `cursor/decision-ledger-console-d800`. Link the GitHub repo so pushes auto-deploy ([documentation/deploy/github-vercel.md](./documentation/deploy/github-vercel.md)). Permanent Numini project create waits on Vercel MCP + SSO. GitHub Actions CI builds only; it does not deploy. `npm start` on a laptop still uses port 4317.
 
 ## Architecture
 

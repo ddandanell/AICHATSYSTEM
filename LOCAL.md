@@ -10,15 +10,19 @@ Install the Cursor CLI first if `agent` is not on your PATH. That process is the
 
 ## Clone
 
-Node.js 20 or newer. Once this repo is accessible:
+Node.js 20.9 or newer (`.nvmrc` pins 22). Canonical GitHub:
 
 ```bash
-git clone https://origin.cursor.com/git/team-numini/tmp-c3cb3faec518f5f4.git inbox-mychef
+git clone https://github.com/numini-co/inbox-mychef.git
 cd inbox-mychef
 git checkout cursor/decision-ledger-console-d800
 npm install
 cp .env.example .env.local
 ```
+
+Origin (Cursor) remote is also available for agents:
+
+`https://origin.cursor.com/git/team-numini/tmp-c3cb3faec518f5f4.git`
 
 ## Env
 
@@ -28,6 +32,8 @@ Edit `.env.local`. Do not commit it. Required names:
 - `KEY_READER_DATABASE_URL`
 - `AUTH_SECRET`
 - `BYOK_ENCRYPTION_KEY`
+- `AUTH_URL`
+- `OPERATOR_BOOTSTRAP_EMAIL` / `OPERATOR_BOOTSTRAP_PASSWORD`
 
 Optional: `CRON_SECRET`, `GHL_WEBHOOK_SECRET`.
 
@@ -39,7 +45,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 Use the Neon `mychef_runtime` strings for `DATABASE_URL` and `KEY_READER_DATABASE_URL` if you want the live inbox. The role cannot create tables. Do not run `npm run db:setup` against Neon.
 
-`.env.example` still has the local Docker URLs (`127.0.0.1:5433`). Those match `docker compose` only. For that path:
+For local Docker only, set `MIGRATION_DATABASE_URL` and:
 
 ```bash
 docker compose up -d
@@ -60,4 +66,4 @@ Approving a draft writes the ledger. It does not message the guest. Auto-pilot s
 
 ## Vercel
 
-Same required env names on the Vercel project. Optional `CRON_SECRET` and `GHL_WEBHOOK_SECRET`. Set `AUTH_URL` to the deployment origin. Deploy branch `cursor/decision-ledger-console-d800`. `vercel.json` only adds the learning cron. Nothing in that cron sends a message.
+Same required env names on the Vercel project. Set `AUTH_URL` to the deployment origin. Deploy branch `cursor/decision-ledger-console-d800`. Details: [documentation/deploy/github-vercel.md](documentation/deploy/github-vercel.md).
