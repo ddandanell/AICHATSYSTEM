@@ -4,7 +4,7 @@ Project docs for the myCHEF operations console (decision ledger, inbox desk, kno
 
 ## Repository
 
-- **GitHub:** [ddandanell/AICHATSYSTEM](https://github.com/ddandanell/AICHATSYSTEM) (`https://github.com/ddandanell/AICHATSYSTEM.git`)
+- **GitHub:** [numini-co/inbox-mychef](https://github.com/numini-co/inbox-mychef) (`https://github.com/numini-co/inbox-mychef.git`)
 - **Production:** `https://inbox-mychef-gilt.vercel.app` (Vercel)
 
 ## Start here

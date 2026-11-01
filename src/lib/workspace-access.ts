@@ -1,7 +1,13 @@
+/**
+ * Workspace membership and role checks.
+ * Neon mode: approved operators only (see operators.ts). Do not trust client headers.
+ * Docs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ */
 import { and, eq, sql } from "drizzle-orm";
 import { appDb } from "@/db/client";
 import { usesMychefInbox } from "@/db/mode";
 import { memberships, organizations, users } from "@/db/schema";
+import { listOperators } from "@/lib/operators";
 
 export type Role = "owner" | "admin" | "reviewer" | "viewer";
 
@@ -49,16 +55,24 @@ export async function authorizeWorkspace(
 ): Promise<WorkspaceAccess> {
   if (usesMychefInbox()) {
     if (slug !== "mychef") return { status: "unknown" };
+    const email = (profile?.email ?? "").trim().toLowerCase();
+    const operators = await listOperators();
+    const mine = operators.find(
+      (row) => row.email === email && row.approved && row.enabled,
+    );
+    if (!mine) {
+      return { status: "forbidden", orgName: "myCHEF", orgSlug: "mychef" };
+    }
     return {
       status: "ok",
       ctx: {
         userId,
         orgId: "mychef",
-        role: "owner",
+        role: mine.role,
         orgSlug: "mychef",
         orgName: "myCHEF",
-        email: profile?.email ?? "",
-        name: profile?.name ?? null,
+        email,
+        name: profile?.name ?? mine.name,
       },
     };
   }

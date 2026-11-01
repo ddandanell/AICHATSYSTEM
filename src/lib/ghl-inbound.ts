@@ -1,5 +1,12 @@
+/**
+ * GoHighLevel inbound adapter.
+ * Maps onto the shared inbound → draft → review loop. Never sends.
+ * WhatsApp will plug in beside this via src/channels/inbound.ts later.
+ * Docs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ */
 import { createHash, timingSafeEqual } from "node:crypto";
 import type pg from "pg";
+import { GHL_CHANNEL } from "@/channels/inbound";
 import { localStructuredDraft } from "@/lib/draft";
 
 const WORKSPACE = "mychef";
@@ -128,13 +135,14 @@ export async function applyGhlPayload(
   await client.query(
     `insert into mychef_inbox.conversations
        (workspace_id, id, contact_id, channel, status, last_message_at, project_id, location_id)
-     values ($1, $2, $3, 'ghl', 'needs_reply', now(), 'mychef', $4)
+     values ($1, $2, $3, $4, 'needs_reply', now(), 'mychef', $5)
      on conflict (workspace_id, id) do update
        set status = 'needs_reply',
            last_message_at = now(),
            contact_id = excluded.contact_id,
+           channel = excluded.channel,
            location_id = coalesce(excluded.location_id, mychef_inbox.conversations.location_id)`,
-    [WORKSPACE, conversationId, contactId, parsed.locationId || null],
+    [WORKSPACE, conversationId, contactId, GHL_CHANNEL, parsed.locationId || null],
   );
   const inserted = await client.query(
     `insert into mychef_inbox.messages

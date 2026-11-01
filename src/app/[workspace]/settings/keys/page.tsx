@@ -1,3 +1,9 @@
+/**
+ * Provider BYOK keys. Prefer vercel_gateway and deepseek.
+ * Encrypted with BYOK_ENCRYPTION_KEY (AES-256-GCM). Hint only in the UI.
+ * Operator password hashes are not shown here.
+ * Docs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ */
 import { KeyManager } from "@/components/key-manager";
 import { NEON_AUTH_URL, NEON_JWKS_URL } from "@/lib/neon-auth";
 import { getWorkspaceAccess } from "@/lib/context";
@@ -12,6 +18,7 @@ import {
 } from "@/app/[workspace]/settings/keys/actions";
 
 export const metadata = { title: "Keys" };
+export const instant = false;
 
 export default async function KeysPage({
   params,

@@ -150,7 +150,7 @@ export function KeyManager({
                 <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor="add-provider">Provider</FieldLabel>
-                    <Select name="provider" defaultValue="openai">
+                    <Select name="provider" defaultValue="vercel_gateway">
                       <SelectTrigger id="add-provider" className="w-full">
                         <SelectValue />
                       </SelectTrigger>
@@ -200,7 +200,7 @@ export function KeyManager({
               <form action={testForm} className="flex flex-col gap-4">
                 <Field>
                   <FieldLabel htmlFor="test-provider">Provider</FieldLabel>
-                  <Select name="provider" defaultValue="openai">
+                  <Select name="provider" defaultValue="vercel_gateway">
                     <SelectTrigger id="test-provider" className="w-full">
                       <SelectValue />
                     </SelectTrigger>

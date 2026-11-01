@@ -1,3 +1,8 @@
+/**
+ * Provider key vault actions. Encrypt with BYOK master key; UI shows last-4 hint only.
+ * Never log secrets. Operator rows are separate (operators.ts).
+ * Docs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ */
 import { and, eq } from "drizzle-orm";
 import { listMychefKeys, revokeMychefKey, saveMychefKey } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";

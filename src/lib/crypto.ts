@@ -1,3 +1,8 @@
+/**
+ * BYOK encryption helpers (AES-256-GCM).
+ * Never log plaintext secrets. Operator passwords use scrypt in operators.ts, not this module.
+ * Docs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ */
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const NONCE_LENGTH = 12;
