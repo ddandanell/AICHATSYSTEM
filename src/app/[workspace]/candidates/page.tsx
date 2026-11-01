@@ -9,6 +9,7 @@ import { listLearningQueue } from "@/data/mychef-store";
 import { usesMychefInbox } from "@/db/mode";
 import { rules } from "@/db/schema";
 import { withTenant } from "@/db/tenant";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +41,9 @@ export default async function CandidatesPage({
   const filter = asQueueFilter(
     typeof query.type === "string" ? query.type : undefined,
   );
+  const highlight =
+    typeof query.highlight === "string" ? query.highlight : null;
+  const fromInbox = query.from === "inbox";
   const learn = learnAction.bind(null, access.ctx.orgSlug);
   const pass = learnPassAction.bind(null, access.ctx.orgSlug);
   const update = ruleStatusAction.bind(null, access.ctx.orgSlug);
@@ -119,6 +123,12 @@ export default async function CandidatesPage({
   const cards = await listLearningQueue(filter);
   const pending = cards.filter((card) => card.status === "pending");
   const rest = cards.filter((card) => card.status !== "pending");
+  const orderedPending = highlight
+    ? [
+        ...pending.filter((card) => card.id === highlight),
+        ...pending.filter((card) => card.id !== highlight),
+      ]
+    : pending;
 
   return (
     <div className="flex flex-col gap-5">
@@ -126,9 +136,9 @@ export default async function CandidatesPage({
         <div className="flex flex-col gap-1">
           <h2 className="text-2xl font-medium tracking-tight">Learning queue</h2>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Clustered edits become situational snippets. Approve embeds the case into
-            knowledge. Dismiss retires it. The curated library stays untouched. Nothing
-            auto-activates and nothing is sent.
+            Inbox corrections land here as situational snippets. Approve embeds the
+            case into knowledge. Dismiss retires it. The curated library stays
+            untouched. Nothing auto-activates and nothing is sent.
           </p>
         </div>
         {canReview(access.ctx.role) ? (
@@ -139,6 +149,16 @@ export default async function CandidatesPage({
           </div>
         ) : null}
       </div>
+
+      {fromInbox && highlight ? (
+        <Alert>
+          <AlertTitle>Correction queued from inbox</AlertTitle>
+          <AlertDescription>
+            Review the highlighted snippet. Approve Snippet stores it as situational
+            knowledge. Dismiss retires it. Nothing was sent.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {clustered !== null ? (
         <p className="rounded-xl border px-4 py-3 text-sm text-muted-foreground">
@@ -162,79 +182,101 @@ export default async function CandidatesPage({
         ))}
       </div>
 
-      {pending.length === 0 ? (
+      {orderedPending.length === 0 ? (
         <Empty className="border">
           <EmptyHeader>
             <EmptyTitle>No pending snippets</EmptyTitle>
             <EmptyDescription>
-              Run the learning pass after reviewers edit drafts. Cron hits the same
-              path nightly when CRON_SECRET is set.
+              Edit a draft in the inbox with a learning reason and why — the case
+              appears here. Cron also clusters unprocessed edits nightly.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
         <ul className="flex flex-col gap-4">
-          {pending.map((card) => (
-            <li key={card.id} className="flex flex-col gap-4 rounded-xl border px-4 py-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge>{card.queueType}</Badge>
-                <Badge variant="secondary">{card.status}</Badge>
-                <Badge variant="outline">{card.source}</Badge>
-                <span className="text-sm text-muted-foreground">
-                  evidence {card.evidence}
-                  {card.reason ? ` · ${card.reason}` : ""}
-                </span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-sm font-medium">Proposed snippet</p>
-                <p className="text-sm leading-6">{card.snippet}</p>
-              </div>
-              {card.diffs.length > 0 ? (
-                <div className="flex flex-col gap-3">
-                  <p className="text-sm font-medium">Evidence diff</p>
-                  {card.diffs.map((diff) => (
-                    <div
-                      key={`${card.id}-${diff.decisionId}`}
-                      className="grid gap-3 rounded-lg bg-muted/40 px-3 py-3 sm:grid-cols-2"
-                    >
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                          AI draft
-                        </span>
-                        <p className="text-sm leading-6 text-muted-foreground line-through decoration-1">
-                          {diff.ai || "—"}
-                        </p>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Human final
-                        </span>
-                        <p className="text-sm leading-6">{diff.human || "—"}</p>
-                      </div>
-                    </div>
-                  ))}
+          {orderedPending.map((card) => {
+            const isHighlight = highlight === card.id;
+            return (
+              <li
+                key={card.id}
+                id={`snippet-${card.id}`}
+                className={
+                  isHighlight
+                    ? "flex flex-col gap-4 rounded-xl border-2 border-foreground px-4 py-4"
+                    : "flex flex-col gap-4 rounded-xl border px-4 py-4"
+                }
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge>{card.queueType}</Badge>
+                  <Badge variant="secondary">{card.status}</Badge>
+                  <Badge variant="outline">{card.source}</Badge>
+                  {isHighlight ? <Badge variant="outline">From inbox</Badge> : null}
+                  <span className="text-sm text-muted-foreground">
+                    evidence {card.evidence}
+                    {card.reason ? ` · ${card.reason}` : ""}
+                  </span>
                 </div>
-              ) : null}
-              {canReview(access.ctx.role) ? (
-                <div className="flex flex-wrap gap-2">
-                  <form action={update}>
-                    <input type="hidden" name="id" value={card.id} />
-                    <input type="hidden" name="status" value="approved" />
-                    <Button type="submit" size="sm">
-                      Approve Snippet
-                    </Button>
-                  </form>
-                  <form action={update}>
-                    <input type="hidden" name="id" value={card.id} />
-                    <input type="hidden" name="status" value="retired" />
-                    <Button type="submit" size="sm" variant="ghost">
-                      Dismiss
-                    </Button>
-                  </form>
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm font-medium">Proposed snippet</p>
+                  <p className="text-sm leading-6">{card.snippet}</p>
                 </div>
-              ) : null}
-            </li>
-          ))}
+                {card.diffs.length > 0 ? (
+                  <div className="flex flex-col gap-3">
+                    <p className="text-sm font-medium">Evidence diff</p>
+                    {card.diffs.map((diff) => (
+                      <div
+                        key={`${card.id}-${diff.decisionId}`}
+                        className="flex flex-col gap-3 rounded-lg bg-muted/40 px-3 py-3"
+                      >
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                              AI draft
+                            </span>
+                            <p className="text-sm leading-6 text-muted-foreground line-through decoration-1">
+                              {diff.ai || "—"}
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Human final
+                            </span>
+                            <p className="text-sm leading-6">{diff.human || "—"}</p>
+                          </div>
+                        </div>
+                        {diff.why ? (
+                          <div className="flex flex-col gap-1 border-t border-border/60 pt-2">
+                            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                              Why
+                            </span>
+                            <p className="text-sm leading-6">{diff.why}</p>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {canReview(access.ctx.role) ? (
+                  <div className="flex flex-wrap gap-2">
+                    <form action={update}>
+                      <input type="hidden" name="id" value={card.id} />
+                      <input type="hidden" name="status" value="approved" />
+                      <Button type="submit" size="sm">
+                        Approve Snippet
+                      </Button>
+                    </form>
+                    <form action={update}>
+                      <input type="hidden" name="id" value={card.id} />
+                      <input type="hidden" name="status" value="retired" />
+                      <Button type="submit" size="sm" variant="ghost">
+                        Dismiss
+                      </Button>
+                    </form>
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       )}
 

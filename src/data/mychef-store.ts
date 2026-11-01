@@ -5,7 +5,7 @@
  * learning-pass / ledger-rule proposals. Approve writes situational knowledge.
  * Idempotency: audit_log action learn:processed per decision id (no DDL).
  * Never auto-activates proposals and never sends.
- * Docs: cbls-architecture.md / handoff.md in the project agent store.
+ * Docs: cbls-architecture.md / handoff.md / learning-queue.md in the project agent store.
  */
 import { appPool } from "@/db/client";
 import { decryptSecret, encryptSecret, keyHint } from "@/lib/crypto";
@@ -15,8 +15,11 @@ import { groupForTitle, type KnowledgeGroup } from "@/lib/knowledge-groups";
 import {
   buildProposalContent,
   isKnowledgeGapReason,
+  isLearnableReason,
+  learningSnippet,
   parseProposalMeta,
   queueTypeForReason,
+  type EvidenceDiff,
   type QueueType,
 } from "@/lib/learning-queue";
 import type { Provider } from "@/lib/providers";
@@ -594,7 +597,7 @@ export type LearningQueueCard = {
   evidence: string;
   reason: string;
   snippet: string;
-  diffs: { decisionId: string; ai: string; human: string }[];
+  diffs: { decisionId: string; ai: string; human: string; why: string }[];
 };
 
 export async function listLearningQueue(
@@ -700,6 +703,16 @@ export async function runMychefLearning(actorId: string) {
  * Marks each clustered decision with audit learn:processed (idempotent).
  * Does not approve, does not touch curated library rows, does not send.
  */
+/** Corrections that feed the Learning Queue: edits, or rejects with a learnable reason. */
+const LEARNABLE_DECISIONS_SQL = `
+  d.created_at >= now() - interval '30 days'
+  and d.reason_code <> 'auto_sent_candidate'
+  and (
+    d.human_decision = 'edited'
+    or (d.human_decision = 'rejected' and d.reason_code <> 'good_as_drafted')
+  )
+`;
+
 export async function runLearningPass(actorId: string, db: Db = appPool) {
   const grouped = await rows<{ reason_code: string; n: string }>(
     db,
@@ -707,8 +720,7 @@ export async function runLearningPass(actorId: string, db: Db = appPool) {
      from mychef_inbox.decision_records d
      join mychef_inbox.feedback f on f.id = d.feedback_id
      where d.workspace_id = $1
-       and d.created_at >= now() - interval '30 days'
-       and d.reason_code <> 'auto_sent_candidate'
+       and ${LEARNABLE_DECISIONS_SQL}
        and not exists (
          select 1 from mychef_inbox.audit_log a
          where a.workspace_id = d.workspace_id
@@ -727,32 +739,8 @@ export async function runLearningPass(actorId: string, db: Db = appPool) {
 
   for (const row of grouped) {
     const count = Number(row.n);
-    if (row.reason_code === "good_as_drafted") {
+    if (row.reason_code === "good_as_drafted" || !isLearnableReason(row.reason_code)) {
       skippedGood += count;
-      const goodIds = await rows<{ id: string }>(
-        db,
-        `select d.id::text as id
-         from mychef_inbox.decision_records d
-         where d.workspace_id = $1
-           and d.reason_code = 'good_as_drafted'
-           and d.created_at >= now() - interval '30 days'
-           and not exists (
-             select 1 from mychef_inbox.audit_log a
-             where a.workspace_id = d.workspace_id
-               and a.record_id = d.id::text
-               and a.action = 'learn:processed'
-           )`,
-        [MYCHEF_WORKSPACE],
-      );
-      for (const item of goodIds) {
-        await rows(
-          db,
-          `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
-           values ($1, $2, 'learn:processed', $3)`,
-          [MYCHEF_WORKSPACE, actorId, item.id],
-        );
-        processed += 1;
-      }
       continue;
     }
 
@@ -764,14 +752,15 @@ export async function runLearningPass(actorId: string, db: Db = appPool) {
       id: string;
       original_draft: string;
       edited_draft: string;
+      rationale: string;
     }>(
       db,
-      `select d.id::text as id, f.original_draft, f.edited_draft
+      `select d.id::text as id, f.original_draft, f.edited_draft, d.rationale
        from mychef_inbox.decision_records d
        join mychef_inbox.feedback f on f.id = d.feedback_id
        where d.workspace_id = $1
          and d.reason_code = $2
-         and d.created_at >= now() - interval '30 days'
+         and ${LEARNABLE_DECISIONS_SQL}
          and not exists (
            select 1 from mychef_inbox.audit_log a
            where a.workspace_id = d.workspace_id
@@ -786,23 +775,26 @@ export async function runLearningPass(actorId: string, db: Db = appPool) {
     const source = isKnowledgeGapReason(row.reason_code) ? "learning-pass" : "ledger-rule";
     const id = `${source}:${proposal.key}`;
     const queueType = queueTypeForReason(row.reason_code);
+    const whyLead = evidenceRows[0]?.rationale?.trim() ?? "";
+    const snippet = learningSnippet(row.reason_code, whyLead, proposal.statement);
     const content = buildProposalContent({
       evidence: count,
       group: proposal.group,
       reason: row.reason_code,
       queueType,
-      snippet: proposal.statement,
+      snippet,
       diffs: evidenceRows.map((item) => ({
         decisionId: item.id,
         ai: item.original_draft.slice(0, 800),
         human: item.edited_draft.slice(0, 800),
+        why: item.rationale.slice(0, 400),
       })),
     });
 
     const outcome = await proposePendingRow(db, {
       id,
       source,
-      title: proposal.statement,
+      title: snippet,
       content,
       category: queueType,
     });
@@ -815,7 +807,7 @@ export async function runLearningPass(actorId: string, db: Db = appPool) {
        from mychef_inbox.decision_records d
        where d.workspace_id = $1
          and d.reason_code = $2
-         and d.created_at >= now() - interval '30 days'
+         and ${LEARNABLE_DECISIONS_SQL}
          and not exists (
            select 1 from mychef_inbox.audit_log a
            where a.workspace_id = d.workspace_id
@@ -869,14 +861,15 @@ async function proposePendingRow(
     [MYCHEF_WORKSPACE, input.id],
   );
   const row = existing[0];
-  if (row && (row.status === "approved" || row.status === "retired")) return "left" as const;
+  if (row && row.status === "approved") return "left" as const;
   if (row && row.source !== input.source) return "left" as const;
   if (row) {
+    // Refresh pending cards, or reopen a dismissed (retired) card for new evidence.
     await rows(
       db,
       `update mychef_inbox.knowledge
        set title = $3, content = $4, category = $5, status = 'pending', updated_at = now(), version = version + 1
-       where workspace_id = $1 and id = $2 and source = $6 and status = 'pending'`,
+       where workspace_id = $1 and id = $2 and source = $6 and status in ('pending', 'retired')`,
       [MYCHEF_WORKSPACE, input.id, input.title, input.content, input.category, input.source],
     );
     return "refreshed" as const;
@@ -889,6 +882,143 @@ async function proposePendingRow(
     [MYCHEF_WORKSPACE, input.id, input.title, input.content, input.category, input.source],
   );
   return "created" as const;
+}
+
+/**
+ * Immediate correct→learn path from inbox.
+ * After an edit/reject with a learnable reason, upsert one pending Learning Queue
+ * card with AI vs human vs why evidence, mark the decision learn:processed.
+ * Never approves, never touches the curated 12, never sends.
+ */
+export async function proposeFromDecision(decisionId: string, actorId: string) {
+  const found = await query<{
+    id: string;
+    reason_code: string;
+    human_decision: string;
+    rationale: string;
+    original_draft: string;
+    edited_draft: string;
+  }>(
+    `select d.id::text as id, d.reason_code, d.human_decision, d.rationale,
+            f.original_draft, f.edited_draft
+     from mychef_inbox.decision_records d
+     join mychef_inbox.feedback f on f.id = d.feedback_id
+     where d.workspace_id = $1 and d.id = $2::uuid`,
+    [MYCHEF_WORKSPACE, decisionId],
+  );
+  const decision = found[0];
+  if (!decision) return { ok: false as const, error: "That decision is not in this workspace." };
+
+  const already = await query<{ id: string }>(
+    `select id::text as id from mychef_inbox.audit_log
+     where workspace_id = $1 and record_id = $2 and action = 'learn:processed'
+     limit 1`,
+    [MYCHEF_WORKSPACE, decision.id],
+  );
+  if (already[0]) {
+    const source = isKnowledgeGapReason(decision.reason_code) ? "learning-pass" : "ledger-rule";
+    return {
+      ok: true as const,
+      queued: false as const,
+      id: `${source}:${decision.reason_code}`,
+      queueType: queueTypeForReason(decision.reason_code),
+    };
+  }
+
+  if (
+    !isLearnableReason(decision.reason_code) ||
+    (decision.human_decision !== "edited" && decision.human_decision !== "rejected")
+  ) {
+    await query(
+      `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+       values ($1, $2, 'learn:processed', $3)`,
+      [MYCHEF_WORKSPACE, actorId, decision.id],
+    );
+    return { ok: true as const, queued: false as const, id: null, queueType: null };
+  }
+
+  const proposal = statementFor(decision.reason_code, 1);
+  if (!proposal) {
+    return { ok: false as const, error: "That reason does not map to a Learning Queue card." };
+  }
+
+  const source = isKnowledgeGapReason(decision.reason_code) ? "learning-pass" : "ledger-rule";
+  const id = `${source}:${proposal.key}`;
+  const queueType = queueTypeForReason(decision.reason_code);
+  const newDiff: EvidenceDiff = {
+    decisionId: decision.id,
+    ai: decision.original_draft.slice(0, 800),
+    human: decision.edited_draft.slice(0, 800),
+    why: decision.rationale.slice(0, 400),
+  };
+
+  const existing = await query<{ content: string; status: string; source: string }>(
+    `select content, status, source from mychef_inbox.knowledge
+     where workspace_id = $1 and id = $2`,
+    [MYCHEF_WORKSPACE, id],
+  );
+  const prior = existing[0];
+  if (prior && prior.status === "approved") {
+    await query(
+      `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+       values ($1, $2, 'learn:processed', $3)`,
+      [MYCHEF_WORKSPACE, actorId, decision.id],
+    );
+    return {
+      ok: true as const,
+      queued: false as const,
+      id,
+      queueType,
+      skipped: "already_approved" as const,
+    };
+  }
+
+  let diffs = [newDiff];
+  let evidenceCount = 1;
+  if (prior && prior.source === source && (prior.status === "pending" || prior.status === "retired")) {
+    const meta = parseProposalMeta(prior.content);
+    diffs = [newDiff, ...meta.diffs.filter((d) => d.decisionId !== decision.id)].slice(
+      0,
+      3,
+    );
+    const priorEvidence = Number(meta.evidence);
+    evidenceCount =
+      prior.status === "retired"
+        ? 1
+        : Number.isFinite(priorEvidence)
+          ? priorEvidence + 1
+          : diffs.length;
+  }
+
+  const snippet = learningSnippet(decision.reason_code, decision.rationale, proposal.statement);
+  const content = buildProposalContent({
+    evidence: evidenceCount,
+    group: proposal.group,
+    reason: decision.reason_code,
+    queueType,
+    snippet,
+    diffs,
+  });
+
+  await proposePendingRow(appPool, {
+    id,
+    source,
+    title: snippet,
+    content,
+    category: queueType,
+  });
+  await query(
+    `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+     values ($1, $2, 'learn:processed', $3)`,
+    [MYCHEF_WORKSPACE, actorId, decision.id],
+  );
+  await query(
+    `insert into mychef_inbox.audit_log (workspace_id, actor_id, action, record_id)
+     values ($1, $2, 'learn:from-inbox', $3)`,
+    [MYCHEF_WORKSPACE, actorId, id],
+  );
+
+  return { ok: true as const, queued: true as const, id, queueType };
 }
 
 function statementFor(reason: string, count: number): { key: string; group: string; statement: string } | null {

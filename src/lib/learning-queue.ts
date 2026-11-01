@@ -7,6 +7,7 @@
  * ledger-rule / situational). Does not auto-activate or send.
  * Docs: /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/cbls-architecture.md
  *       /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/handoff.md
+ *       /cursor/stores/bc-5928a827-61d1-4e52-9e4b-2d10bbb58416/docs/learning-queue.md
  */
 
 export const QUEUE_TYPES = [
@@ -33,10 +34,16 @@ export function isKnowledgeGapReason(reason: string): boolean {
   return ["wrong_policy", "wrong_fact", "missing_knowledge"].includes(reason);
 }
 
+/** Reasons that should become Learning Queue proposals after a correction. */
+export function isLearnableReason(reason: string): boolean {
+  return reason !== "good_as_drafted" && reason !== "auto_sent_candidate";
+}
+
 export type EvidenceDiff = {
   decisionId: string;
   ai: string;
   human: string;
+  why: string;
 };
 
 export function parseProposalMeta(content: string): {
@@ -63,8 +70,10 @@ export function parseProposalMeta(content: string): {
   for (const block of diffBlocks) {
     const decisionId = block.match(/^decision:([^\n]+)/)?.[1]?.trim() ?? "";
     const ai = block.match(/^AI:\s*([\s\S]*?)(?=\nHuman:|$)/m)?.[1]?.trim() ?? "";
-    const human = block.match(/^Human:\s*([\s\S]*?)$/m)?.[1]?.trim() ?? "";
-    if (decisionId || ai || human) diffs.push({ decisionId, ai, human });
+    const human =
+      block.match(/^Human:\s*([\s\S]*?)(?=\nWhy:|$)/m)?.[1]?.trim() ?? "";
+    const why = block.match(/^Why:\s*([\s\S]*?)$/m)?.[1]?.trim() ?? "";
+    if (decisionId || ai || human || why) diffs.push({ decisionId, ai, human, why });
   }
   return { evidence, group, reason, queueType, snippet, diffs };
 }
@@ -91,7 +100,14 @@ export function buildProposalContent(input: {
       `---diff decision:${diff.decisionId}`,
       `AI: ${diff.ai}`,
       `Human: ${diff.human}`,
+      `Why: ${diff.why || "—"}`,
     );
   }
   return parts.join("\n");
+}
+
+export function learningSnippet(reason: string, why: string, base: string): string {
+  const trimmed = why.trim();
+  if (!trimmed) return base;
+  return `Situational case (${reason}): ${trimmed}`;
 }

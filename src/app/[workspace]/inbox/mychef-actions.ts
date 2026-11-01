@@ -4,11 +4,18 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   draftForConversation,
+  proposeFromDecision,
   recordOutcome,
   reviewConversation,
 } from "@/data/mychef-store";
 import { getWorkspaceAccess } from "@/lib/context";
-import { isHumanDecision, isReasonCode, OUTCOMES, type Outcome } from "@/lib/reason-codes";
+import { isLearnableReason } from "@/lib/learning-queue";
+import {
+  isHumanDecision,
+  isReasonCode,
+  OUTCOMES,
+  type Outcome,
+} from "@/lib/reason-codes";
 import { canReview } from "@/lib/workspace-access";
 
 export type ActionState = { error?: string; message?: string } | null;
@@ -36,7 +43,18 @@ export async function reviewConversationAction(
   const finalText = String(formData.get("final_text") ?? "");
   if (!isHumanDecision(humanDecision)) return { error: "Choose a decision." };
   if (!isReasonCode(reasonCode)) return { error: "Choose a reason code." };
-  if (!rationale || !whyNot) return { error: "Say why this reply, and why not the alternative." };
+  if (!rationale || !whyNot) {
+    return { error: "Say why this reply, and why not the alternative." };
+  }
+  if (
+    (humanDecision === "edited" || humanDecision === "rejected" || humanDecision === "escalated") &&
+    !isLearnableReason(reasonCode)
+  ) {
+    return {
+      error:
+        "Edits and rejects need a learning reason (not Good as drafted) so the case can enter the Learning Queue.",
+    };
+  }
   const saved = await reviewConversation(conversationId, access.ctx.email || access.ctx.userId, {
     humanDecision,
     reasonCode,
@@ -45,6 +63,23 @@ export async function reviewConversationAction(
     finalText,
   });
   if (!saved.ok) return { error: saved.error };
+
+  const actor = access.ctx.email || access.ctx.userId;
+  const learnable =
+    humanDecision === "edited" ||
+    humanDecision === "rejected" ||
+    humanDecision === "escalated";
+  if (learnable && isLearnableReason(reasonCode)) {
+    const proposed = await proposeFromDecision(saved.id, actor);
+    revalidatePath("/mychef/candidates");
+    revalidatePath(`/mychef/inbox/${saved.id}`);
+    if (proposed.ok && proposed.queued && proposed.id && proposed.queueType) {
+      redirect(
+        `/mychef/candidates?from=inbox&highlight=${encodeURIComponent(proposed.id)}&type=${encodeURIComponent(proposed.queueType)}`,
+      );
+    }
+  }
+
   redirect(`/mychef/inbox/${saved.id}`);
 }
 
