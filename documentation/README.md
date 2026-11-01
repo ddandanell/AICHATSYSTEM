@@ -4,8 +4,8 @@ Project docs for the myCHEF operations console (decision ledger, inbox desk, kno
 
 ## Repository
 
-- **Source of truth:** Cursor Origin (this agent checkout). Do not point docs at a random `github.com/...` remote unless the project Create-repo flow created it.
-- **Production:** `https://inbox-mychef-gilt.vercel.app` (Vercel). Redeploys follow the Origin branch the project is linked to.
+- **GitHub:** [ddandanell/AICHATSYSTEM](https://github.com/ddandanell/AICHATSYSTEM) (`https://github.com/ddandanell/AICHATSYSTEM.git`)
+- **Production:** `https://inbox-mychef-gilt.vercel.app` (Vercel)
 
 ## Start here
 

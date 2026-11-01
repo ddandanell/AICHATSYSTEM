@@ -2,7 +2,7 @@
 
 Review drafted client replies and record why a reply was right or wrong. The console is a decision ledger, a key vault, and a review queue. It is not a chat window, and it does not send messages.
 
-**Docs:** [documentation/](./documentation/) · **Git:** Cursor Origin (create a GitHub repo from the Create repo control if you want a public GitHub remote)
+**Docs:** [documentation/](./documentation/) · **GitHub:** [ddandanell/AICHATSYSTEM](https://github.com/ddandanell/AICHATSYSTEM)
 
 Each workspace is a tenant. Postgres row-level security is the boundary. Provider keys stay on the server, encrypted with AES-256-GCM. The browser only ever sees a four-character hint.
 
