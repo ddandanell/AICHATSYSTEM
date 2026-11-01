@@ -187,6 +187,7 @@ export async function MychefDesk({
         const metrics = computeContactResponseMetrics(conversation.messages);
         workspace = (
           <DeskReview
+            key={`${conversation.id}:${conversation.draft?.body ?? "empty"}`}
             slug={slug}
             nextId={nextId}
             knowledgeTitles={titles}

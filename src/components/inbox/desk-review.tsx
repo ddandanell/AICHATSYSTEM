@@ -134,27 +134,10 @@ export function DeskReview({
   const [draftError, setDraftError] = useState<string | null>(null);
   const [sourceOpen, setSourceOpen] = useState<string | null>(null);
 
-  useEffect(() => {
-    setDraftText(conversation.draft?.body ?? "");
-    setEditing(false);
-    setContextTab("client");
-    setReasonCode("good_as_drafted");
-    setRationale("");
-    setWhyNot("");
-    setRemember(true);
-    setTagDraft(conversation.tags.join(", "));
-    setError(null);
-    setDraftError(null);
-  }, [conversation.id, conversation.draft?.body, conversation.tags]);
-
   const dirty = useMemo(
     () => Boolean(conversation.draft && draftText.trim() !== conversation.draft.body.trim()),
     [conversation.draft, draftText],
   );
-
-  useEffect(() => {
-    if (dirty && editing) setContextTab("why");
-  }, [dirty, editing]);
 
   function goNext() {
     if (nextId) router.push(`/${slug}/inbox/${nextId}`);
@@ -378,6 +361,7 @@ export function DeskReview({
                     onChange={(event) => {
                       setDraftText(event.target.value);
                       setEditing(true);
+                      setContextTab("why");
                       if (event.target.value.trim() !== conversation.draft?.body.trim()) {
                         setReasonCode((prev) =>
                           prev === "good_as_drafted" ? "too_casual" : prev,
